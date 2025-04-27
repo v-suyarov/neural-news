@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, Text, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, Integer, Text, TIMESTAMP, ForeignKey, \
+    UniqueConstraint
 from sqlalchemy.orm import declarative_base
 import datetime
 
@@ -29,3 +30,17 @@ class PostTag(Base):
     id = Column(Integer, primary_key=True)
     post_id = Column(Integer, ForeignKey('parsed_posts.id'), nullable=False)
     tag_id = Column(Integer, ForeignKey('tags.id'), nullable=False)
+
+class TargetChannel(Base):
+    __tablename__ = 'target_channels'
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(Integer, unique=True, nullable=False)
+    title = Column(Text, nullable=True)
+
+class TargetChannelTag(Base):
+    __tablename__ = 'target_channel_tags'
+    id = Column(Integer, primary_key=True)
+    target_channel_id = Column(Integer, ForeignKey('target_channels.id'), nullable=False)
+    tag_id = Column(Integer, ForeignKey('tags.id'), nullable=False)
+
+    __table_args__ = (UniqueConstraint('target_channel_id', 'tag_id', name='_target_channel_tag_uc'),)

@@ -7,6 +7,7 @@ from .handlers import global_handler
 
 active_listeners = {}
 
+
 async def add_channel_listener(chat_id):
     if chat_id in active_listeners:
         return

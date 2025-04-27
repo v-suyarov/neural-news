@@ -1,4 +1,7 @@
-from .models import Channel, ParsedPost, Tag, PostTag, Base
+from aiogram import Bot
+
+from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
+    TargetChannel
 from .session import Session
 import random
 from client.client_instance import client
@@ -70,6 +73,9 @@ def save_post(message_id, chat_id, text):
 
         session.commit()
 
+        return post
+
+
 
 async def fetch_channel_title(chat_id):
     """Получить название канала по chat_id через Telethon."""
@@ -80,3 +86,115 @@ async def fetch_channel_title(chat_id):
         except Exception as e:
             print(f"⚠️ Ошибка получения названия канала {chat_id}: {e}")
             return None
+
+
+def add_target_channel(chat_id, title=None):
+    with Session() as session:
+        if session.query(TargetChannel).filter_by(chat_id=chat_id).first():
+            return False
+        session.add(TargetChannel(chat_id=chat_id, title=title))
+        session.commit()
+        return True
+
+
+def remove_target_channel(chat_id):
+    with Session() as session:
+        channel = session.query(TargetChannel).filter_by(
+            chat_id=chat_id).first()
+        if channel:
+            session.delete(channel)
+            session.commit()
+
+
+def get_target_channels():
+    with Session() as session:
+        return session.query(TargetChannel).all()
+
+
+def add_tag_to_target_channel(chat_id, tag_name):
+    with Session() as session:
+        target_channel = session.query(TargetChannel).filter_by(
+            chat_id=chat_id).first()
+        tag = session.query(Tag).filter_by(name=tag_name).first()
+        if not target_channel or not tag:
+            return False
+        existing = session.query(TargetChannelTag).filter_by(
+            target_channel_id=target_channel.id, tag_id=tag.id).first()
+        if existing:
+            return False
+        session.add(TargetChannelTag(target_channel_id=target_channel.id,
+                                     tag_id=tag.id))
+        session.commit()
+        return True
+
+
+def remove_tag_from_target_channel(chat_id, tag_name):
+    with Session() as session:
+        target_channel = session.query(TargetChannel).filter_by(
+            chat_id=chat_id).first()
+        tag = session.query(Tag).filter_by(name=tag_name).first()
+        if not target_channel or not tag:
+            return False
+        association = session.query(TargetChannelTag).filter_by(
+            target_channel_id=target_channel.id, tag_id=tag.id).first()
+        if association:
+            session.delete(association)
+            session.commit()
+            return True
+        return False
+
+
+def get_tags_for_target_channel(chat_id):
+    with Session() as session:
+        target_channel = session.query(TargetChannel).filter_by(
+            chat_id=chat_id).first()
+        if not target_channel:
+            return []
+        tags = (
+            session.query(Tag)
+            .join(TargetChannelTag, Tag.id == TargetChannelTag.tag_id)
+            .filter(TargetChannelTag.target_channel_id == target_channel.id)
+            .all()
+        )
+        return tags
+
+
+def rewrite_text(text):
+    """Замоканный рерайт текста."""
+    return f"{text}\n\n(рерайт GPT)"
+
+
+async def post_to_target_channels(bot: Bot, post_id: int, text: str):
+    """Определить куда постить новость и отправить её в таргетные каналы."""
+    with Session() as session:
+        # Получаем теги поста
+        post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
+        if not post_tags:
+            print(f"⚠️ Нет тегов у поста {post_id}")
+            return
+
+        post_tag_ids = {pt.tag_id for pt in post_tags}
+
+        # Получаем все таргетные каналы
+        target_channels = session.query(TargetChannel).all()
+        if not target_channels:
+            print(f"⚠️ Нет таргетных каналов.")
+            return
+
+        for target_channel in target_channels:
+            # Получаем разрешённые теги для канала
+            allowed_tags = session.query(TargetChannelTag).filter_by(
+                target_channel_id=target_channel.id).all()
+            allowed_tag_ids = {at.tag_id for at in allowed_tags}
+
+            # Проверяем пересечение
+            if post_tag_ids & allowed_tag_ids:
+                # Есть хотя бы один совпадающий тег
+                rewritten_text = rewrite_text(text)
+                try:
+                    await bot.send_message(target_channel.chat_id,
+                                           rewritten_text)
+                    print(
+                        f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+                except Exception as e:
+                    print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
