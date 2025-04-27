@@ -4,7 +4,9 @@ __pycache__/
 *$py.class
 
 .idea
-
+# Telethon / SQLite сессии
+*.session
+*.session-journal
 # C extensions
 *.so
 

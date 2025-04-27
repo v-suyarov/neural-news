@@ -1,10 +1,12 @@
 from aiogram.filters import Command
 from aiogram.types import Message
+
+from client.client_instance import client
 from .bot_instance import dp
 from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     fetch_channel_title, remove_tag_from_target_channel, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
-    add_target_channel, get_tags_for_target_channel
+    add_target_channel, get_tags_for_target_channel, get_all_tags
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -12,22 +14,30 @@ from client.listeners import add_channel_listener, remove_channel_listener
 async def cmd_start(message: Message):
     text = (
         "🤖 *Бот запущен!* Вот что я умею на данный момент:\n\n"
+
         "📥 *Работа с каналами-источниками:*\n"
         "• `/add_channel <chat_id>` — добавить канал для прослушивания\n"
         "• `/remove_channel <chat_id>` — удалить канал из прослушивания\n"
         "• `/list_channels` — показать все каналы-источники\n\n"
+
         "🎯 *Работа с таргетными каналами:*\n"
         "• `/add_target_channel <chat_id>` — добавить таргетный канал\n"
         "• `/remove_target_channel <chat_id>` — удалить таргетный канал\n"
         "• `/list_target_channels` — показать все таргетные каналы\n\n"
+
         "🏷 *Управление тегами таргетных каналов:*\n"
         "• `/add_target_tag <chat_id> <тег>` — добавить разрешённый тег для таргетного канала\n"
         "• `/remove_target_tag <chat_id> <тег>` — удалить тег из таргетного канала\n"
         "• `/list_target_tags <chat_id>` — показать теги, разрешённые для канала\n\n"
+
+        "🏷 *Работа с тегами в базе:*\n"
+        "• `/list_tags` — показать все существующие теги\n\n"
+
         "⚙️ *Прочее:*\n"
         "• Посты автоматически сохраняются в БД\n"
         "• Теги постов определяются автоматически (пока рандомно)\n"
         "• Посты публикуются в таргетные каналы после рерайта (пока мок 'рерайт GPT')\n\n"
+
         "ℹ️ *Функционал будет расширяться!*"
     )
     await message.answer(text, parse_mode="Markdown")
@@ -46,14 +56,23 @@ async def cmd_add_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    title = await fetch_channel_title(
-        chat_id)  # Новое: асинхронно получили название
-    if not add_channel(chat_id,
-                       title=title):  # Старое: синхронно сохранили в базу
+    title = await fetch_channel_title(chat_id)
+
+    if not add_channel(chat_id, title=title):
         await message.answer(f"⚠️ Канал {chat_id} уже добавлен.")
-    else:
-        await add_channel_listener(chat_id)
-        await message.answer(f"✅ Канал {chat_id} добавлен.")
+        return
+
+    # 💥 Подключаем клиента, если он не подключен
+    if not client.is_connected():
+        await client.connect()
+
+    # 💥 Подгружаем канал в Telethon сессию
+    await client.get_entity(chat_id)
+
+    # Теперь подписываемся
+    await add_channel_listener(chat_id)
+
+    await message.answer(f"✅ Канал {chat_id} добавлен.")
 
 
 @dp.message(Command("remove_channel"))
@@ -195,3 +214,15 @@ async def cmd_list_target_tags(message: Message):
 
     text = "🏷 Теги канала:\n" + "\n".join(f"• {tag.name}" for tag in tags)
     await message.answer(text)
+
+
+@dp.message(Command("list_tags"))
+async def cmd_list_tags(message: Message):
+    tags = get_all_tags()
+    if not tags:
+        await message.answer("❌ Нет доступных тегов.")
+        return
+
+    text = "🏷 *Существующие теги:*\n" + "\n".join(
+        f"• {tag.name}" for tag in tags)
+    await message.answer(text, parse_mode="Markdown")

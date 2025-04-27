@@ -73,8 +73,7 @@ def save_post(message_id, chat_id, text):
 
         session.commit()
 
-        return post
-
+        return post.id
 
 
 async def fetch_channel_title(chat_id):
@@ -198,3 +197,8 @@ async def post_to_target_channels(bot: Bot, post_id: int, text: str):
                         f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
                 except Exception as e:
                     print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
+
+
+def get_all_tags():
+    with Session() as session:
+        return session.query(Tag).order_by(Tag.name).all()
