@@ -118,10 +118,15 @@ async def cmd_add_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    if add_target_channel(chat_id):
-        await message.answer(f"✅ Таргетный канал {chat_id} добавлен.")
+    # 💥 Получаем название канала
+    title = await fetch_channel_title(chat_id)
+
+    if add_target_channel(chat_id, title=title):
+        await message.answer(f"✅ Таргетный канал {chat_id} ({title or 'Без названия'}) добавлен.")
+        print(f"➕ Добавлен таргетный канал {chat_id} ({title or 'Без названия'})")
     else:
         await message.answer(f"⚠️ Таргетный канал {chat_id} уже существует.")
+        print(f"⚠️ Таргетный канал {chat_id} уже существует")
 
 
 @dp.message(Command("remove_target_channel"))
