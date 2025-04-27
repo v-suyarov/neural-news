@@ -1,7 +1,7 @@
 from bot.bot_instance import bot
 from db.utils import save_post, post_to_target_channels
 from db.session import Session
-from db.models import Channel
+from db.models import Channel, PostTag, Tag
 
 
 async def global_handler(event):
@@ -21,6 +21,19 @@ async def global_handler(event):
             text=text
         )
         print("✅ Сообщение сохранено в БД.")
+
+        # 🔥 ДОБАВЛЯЕМ вывод тегов и фрагмента сообщения
+        with Session() as session:
+            post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
+            tag_ids = [pt.tag_id for pt in post_tags]
+            tags = session.query(Tag).filter(Tag.id.in_(tag_ids)).all()
+            tag_names = [tag.name for tag in tags]
+
+        tags_text = ", ".join(tag_names) if tag_names else "Нет тегов"
+        text_snippet = (text[:10] + "...") if len(text) > 10 else text
+
+        print(f"🏷 Теги поста: {tags_text}")
+        print(f"📝 Фрагмент текста: {text_snippet}")
 
         await post_to_target_channels(bot, post_id, text)
 

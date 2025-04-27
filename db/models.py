@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, Text, TIMESTAMP, ForeignKey, \
     UniqueConstraint
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, relationship
 import datetime
 
 Base = declarative_base()
@@ -36,6 +36,12 @@ class TargetChannel(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(Integer, unique=True, nullable=False)
     title = Column(Text, nullable=True)
+
+    tags = relationship(
+        "TargetChannelTag",
+        backref="target_channel",
+        cascade="all, delete-orphan"
+    )
 
 class TargetChannelTag(Base):
     __tablename__ = 'target_channel_tags'

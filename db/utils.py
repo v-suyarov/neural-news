@@ -98,10 +98,10 @@ def add_target_channel(chat_id, title=None):
 
 def remove_target_channel(chat_id):
     with Session() as session:
-        channel = session.query(TargetChannel).filter_by(
-            chat_id=chat_id).first()
-        if channel:
-            session.delete(channel)
+        target_channel = session.query(
+            TargetChannel).filter_by(chat_id=chat_id).first()
+        if target_channel:
+            session.delete(target_channel)
             session.commit()
 
 
