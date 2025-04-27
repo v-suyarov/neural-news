@@ -1,7 +1,7 @@
 from aiogram import Bot
 
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
-    TargetChannel
+    TargetChannel, User
 from .session import Session
 import random
 from client.client_instance import client
@@ -39,22 +39,28 @@ def predict_tags(text):
 
 def get_active_channels():
     with Session() as session:
-        return session.query(Channel).all()
+        channels = session.query(Channel).all()
+
+    unique = {}
+    for channel in channels:
+        if channel.chat_id not in unique:
+            unique[channel.chat_id] = channel
+
+    return list(unique.values())
 
 
-def add_channel(chat_id, title=None):
-    """Сохранить канал в базу данных."""
+def add_channel(chat_id, user_id, title=None):
     with Session() as session:
-        if session.query(Channel).filter_by(chat_id=chat_id).first():
+        if session.query(Channel).filter_by(chat_id=chat_id, user_id=user_id).first():
             return False
-        session.add(Channel(chat_id=chat_id, title=title))
+        session.add(Channel(chat_id=chat_id, user_id=user_id, title=title))
         session.commit()
         return True
 
 
-def remove_channel_by_id(chat_id):
+def remove_channel_by_id(chat_id, user_id):
     with Session() as session:
-        channel = session.query(Channel).filter_by(chat_id=chat_id).first()
+        channel = session.query(Channel).filter_by(chat_id=chat_id, user_id=user_id).first()
         if channel:
             session.delete(channel)
             session.commit()
@@ -87,55 +93,61 @@ async def fetch_channel_title(chat_id):
             return None
 
 
-def add_target_channel(chat_id, title=None):
+def add_target_channel(chat_id, user_id, title=None):
     with Session() as session:
-        if session.query(TargetChannel).filter_by(chat_id=chat_id).first():
+        if session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first():
             return False
-        session.add(TargetChannel(chat_id=chat_id, title=title))
+        session.add(TargetChannel(chat_id=chat_id, user_id=user_id, title=title))
         session.commit()
         return True
 
-
-def remove_target_channel(chat_id):
+def remove_target_channel(chat_id, user_id):
     with Session() as session:
-        target_channel = session.query(
-            TargetChannel).filter_by(chat_id=chat_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
         if target_channel:
             session.delete(target_channel)
             session.commit()
 
 
-def get_target_channels():
+def get_target_channels(user_id):
     with Session() as session:
-        return session.query(TargetChannel).all()
+        return session.query(TargetChannel).filter_by(user_id=user_id).all()
 
 
-def add_tag_to_target_channel(chat_id, tag_name):
+def add_tag_to_target_channel(chat_id, user_id, tag_name):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(
-            chat_id=chat_id).first()
-        tag = session.query(Tag).filter_by(name=tag_name).first()
-        if not target_channel or not tag:
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        if not target_channel:
             return False
+
+        tag = session.query(Tag).filter_by(name=tag_name).first()
+        if not tag:
+            return False
+
         existing = session.query(TargetChannelTag).filter_by(
-            target_channel_id=target_channel.id, tag_id=tag.id).first()
+            target_channel_id=target_channel.id, tag_id=tag.id
+        ).first()
         if existing:
             return False
-        session.add(TargetChannelTag(target_channel_id=target_channel.id,
-                                     tag_id=tag.id))
+
+        session.add(TargetChannelTag(target_channel_id=target_channel.id, tag_id=tag.id))
         session.commit()
         return True
 
 
-def remove_tag_from_target_channel(chat_id, tag_name):
+def remove_tag_from_target_channel(chat_id, user_id, tag_name):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(
-            chat_id=chat_id).first()
-        tag = session.query(Tag).filter_by(name=tag_name).first()
-        if not target_channel or not tag:
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        if not target_channel:
             return False
+
+        tag = session.query(Tag).filter_by(name=tag_name).first()
+        if not tag:
+            return False
+
         association = session.query(TargetChannelTag).filter_by(
-            target_channel_id=target_channel.id, tag_id=tag.id).first()
+            target_channel_id=target_channel.id, tag_id=tag.id
+        ).first()
         if association:
             session.delete(association)
             session.commit()
@@ -143,10 +155,9 @@ def remove_tag_from_target_channel(chat_id, tag_name):
         return False
 
 
-def get_tags_for_target_channel(chat_id):
+def get_tags_for_target_channel(chat_id, user_id):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(
-            chat_id=chat_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
         if not target_channel:
             return []
         tags = (
@@ -202,3 +213,13 @@ async def post_to_target_channels(bot: Bot, post_id: int, text: str):
 def get_all_tags():
     with Session() as session:
         return session.query(Tag).order_by(Tag.name).all()
+
+
+def get_or_create_user(telegram_id):
+    with Session() as session:
+        user = session.query(User).filter_by(telegram_id=telegram_id).first()
+        if not user:
+            user = User(telegram_id=telegram_id)
+            session.add(user)
+            session.commit()
+        return user

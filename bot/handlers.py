@@ -58,7 +58,8 @@ async def cmd_add_channel(message: Message):
 
     title = await fetch_channel_title(chat_id)
 
-    if not add_channel(chat_id, title=title):
+    user_id = message.from_user.id
+    if not add_channel(chat_id, user_id, title=title):
         await message.answer(f"⚠️ Канал {chat_id} уже добавлен.")
         return
 
@@ -88,14 +89,16 @@ async def cmd_remove_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    remove_channel_by_id(chat_id)
+    user_id = message.from_user.id
+    remove_channel_by_id(chat_id, user_id)
     await remove_channel_listener(chat_id)
     await message.answer(f"🗑 Канал {chat_id} удалён.")
 
 
 @dp.message(Command("list_channels"))
 async def cmd_list_channels(message: Message):
-    channels = get_active_channels()
+    user_id = message.from_user.id
+    channels = get_active_channels(user_id)
     if not channels:
         await message.answer("❌ Нет активных каналов.")
         return
@@ -121,7 +124,8 @@ async def cmd_add_target_channel(message: Message):
     # 💥 Получаем название канала
     title = await fetch_channel_title(chat_id)
 
-    if add_target_channel(chat_id, title=title):
+    user_id = message.from_user.id
+    if add_target_channel(chat_id, user_id, title=title):
         await message.answer(f"✅ Таргетный канал {chat_id} ({title or 'Без названия'}) добавлен.")
         print(f"➕ Добавлен таргетный канал {chat_id} ({title or 'Без названия'})")
     else:
@@ -142,13 +146,15 @@ async def cmd_remove_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    remove_target_channel(chat_id)
+    user_id = message.from_user.id
+    remove_target_channel(chat_id, user_id)
     await message.answer(f"🗑 Таргетный канал {chat_id} удалён.")
 
 
 @dp.message(Command("list_target_channels"))
 async def cmd_list_target_channels(message: Message):
-    channels = get_target_channels()
+    user_id = message.from_user.id
+    channels = get_target_channels(user_id)
     if not channels:
         await message.answer("❌ Нет таргетных каналов.")
         return
@@ -172,7 +178,8 @@ async def cmd_add_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    if add_tag_to_target_channel(chat_id, tag_name):
+    user_id = message.from_user.id
+    if add_tag_to_target_channel(chat_id, user_id, tag_name):
         await message.answer(f"✅ Тег '{tag_name}' добавлен к каналу {chat_id}.")
     else:
         await message.answer(
@@ -193,7 +200,8 @@ async def cmd_remove_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    if remove_tag_from_target_channel(chat_id, tag_name):
+    user_id = message.from_user.id
+    if remove_tag_from_target_channel(chat_id, user_id, tag_name):
         await message.answer(f"🗑 Тег '{tag_name}' удалён у канала {chat_id}.")
     else:
         await message.answer(f"⚠️ Не удалось удалить тег.")
@@ -212,7 +220,8 @@ async def cmd_list_target_tags(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    tags = get_tags_for_target_channel(chat_id)
+    user_id = message.from_user.id
+    tags = get_tags_for_target_channel(chat_id, user_id)
     if not tags:
         await message.answer(f"❌ У канала {chat_id} нет тегов.")
         return
