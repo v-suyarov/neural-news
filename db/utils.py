@@ -1,4 +1,6 @@
 from aiogram import Bot
+from telethon.errors import ChannelPrivateError, ChannelInvalidError, \
+    ChannelPublicGroupNaError, ChatAdminRequiredError
 
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
     TargetChannel, User
@@ -37,9 +39,12 @@ def predict_tags(text):
         return random.sample(all_tags, num_tags)
 
 
-def get_active_channels():
+def get_active_channels(user_id: int = None):
     with Session() as session:
-        channels = session.query(Channel).all()
+        if user_id is not None:
+            channels = session.query(Channel).filter_by(user_id=user_id).all()
+        else:
+            channels = session.query(Channel).all()
 
     unique = {}
     for channel in channels:
@@ -47,6 +52,7 @@ def get_active_channels():
             unique[channel.chat_id] = channel
 
     return list(unique.values())
+
 
 
 def add_channel(chat_id, user_id, title=None):
@@ -83,14 +89,15 @@ def save_post(message_id, chat_id, text):
 
 
 async def fetch_channel_title(chat_id):
-    """Получить название канала по chat_id через Telethon."""
-    async with client:
-        try:
-            entity = await client.get_entity(chat_id)
-            return entity.title
-        except Exception as e:
-            print(f"⚠️ Ошибка получения названия канала {chat_id}: {e}")
-            return None
+    if not client.is_connected():
+        await client.connect()
+
+    try:
+        entity = await client.get_entity(chat_id)
+        return entity.title
+    except Exception as e:
+        print(f"⚠️ Ошибка при получении канала {chat_id}: {e}")
+        return None
 
 
 def add_target_channel(chat_id, user_id, title=None):

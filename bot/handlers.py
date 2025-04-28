@@ -6,7 +6,8 @@ from .bot_instance import dp
 from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     fetch_channel_title, remove_tag_from_target_channel, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
-    add_target_channel, get_tags_for_target_channel, get_all_tags
+    add_target_channel, get_tags_for_target_channel, get_all_tags, \
+    get_or_create_user
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -45,6 +46,9 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split()
     if len(args) < 2:
         await message.answer("⚠️ Укажите chat_id канала!")
@@ -58,26 +62,18 @@ async def cmd_add_channel(message: Message):
 
     title = await fetch_channel_title(chat_id)
 
-    user_id = message.from_user.id
-    if not add_channel(chat_id, user_id, title=title):
-        await message.answer(f"⚠️ Канал {chat_id} уже добавлен.")
-        return
-
-    # 💥 Подключаем клиента, если он не подключен
-    if not client.is_connected():
-        await client.connect()
-
-    # 💥 Подгружаем канал в Telethon сессию
-    await client.get_entity(chat_id)
-
-    # Теперь подписываемся
-    await add_channel_listener(chat_id)
-
-    await message.answer(f"✅ Канал {chat_id} добавлен.")
+    if add_channel(chat_id, user_id, title=title):
+        await add_channel_listener(chat_id)
+        await message.answer(f"✅ Канал {chat_id} добавлен.")
+    else:
+        await message.answer(f"⚠️ Канал {chat_id} уже существует.")
 
 
 @dp.message(Command("remove_channel"))
 async def cmd_remove_channel(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split()
     if len(args) < 2:
         await message.answer("⚠️ Укажите chat_id канала!")
@@ -89,7 +85,6 @@ async def cmd_remove_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    user_id = message.from_user.id
     remove_channel_by_id(chat_id, user_id)
     await remove_channel_listener(chat_id)
     await message.answer(f"🗑 Канал {chat_id} удалён.")
@@ -98,18 +93,24 @@ async def cmd_remove_channel(message: Message):
 @dp.message(Command("list_channels"))
 async def cmd_list_channels(message: Message):
     user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     channels = get_active_channels(user_id)
     if not channels:
         await message.answer("❌ Нет активных каналов.")
         return
 
-    text = "📋 Активные каналы:" + "\n".join(
-        f"• {ch.chat_id}" for ch in channels)
+    text = "📋 Активные каналы:\n" + "\n".join(
+        f"• {ch.chat_id} ({ch.title or 'Без названия'})" for ch in channels
+    )
     await message.answer(text)
 
 
 @dp.message(Command("add_target_channel"))
 async def cmd_add_target_channel(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split()
     if len(args) < 2:
         await message.answer("⚠️ Укажите chat_id канала!")
@@ -121,20 +122,19 @@ async def cmd_add_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    # 💥 Получаем название канала
     title = await fetch_channel_title(chat_id)
 
-    user_id = message.from_user.id
     if add_target_channel(chat_id, user_id, title=title):
-        await message.answer(f"✅ Таргетный канал {chat_id} ({title or 'Без названия'}) добавлен.")
-        print(f"➕ Добавлен таргетный канал {chat_id} ({title or 'Без названия'})")
+        await message.answer(f"✅ Таргетный канал {chat_id} добавлен.")
     else:
         await message.answer(f"⚠️ Таргетный канал {chat_id} уже существует.")
-        print(f"⚠️ Таргетный канал {chat_id} уже существует")
 
 
 @dp.message(Command("remove_target_channel"))
 async def cmd_remove_target_channel(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split()
     if len(args) < 2:
         await message.answer("⚠️ Укажите chat_id канала!")
@@ -146,7 +146,6 @@ async def cmd_remove_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    user_id = message.from_user.id
     remove_target_channel(chat_id, user_id)
     await message.answer(f"🗑 Таргетный канал {chat_id} удалён.")
 
@@ -154,21 +153,26 @@ async def cmd_remove_target_channel(message: Message):
 @dp.message(Command("list_target_channels"))
 async def cmd_list_target_channels(message: Message):
     user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     channels = get_target_channels(user_id)
     if not channels:
         await message.answer("❌ Нет таргетных каналов.")
         return
 
     text = "🎯 Таргетные каналы:\n" + "\n".join(
-        f"• {ch.chat_id} ({ch.title or 'Без названия'})" for ch in channels)
+        f"• {ch.chat_id} ({ch.title or 'Без названия'})" for ch in channels
+    )
     await message.answer(text)
-
 
 @dp.message(Command("add_target_tag"))
 async def cmd_add_target_tag(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
-        await message.answer("⚠️ Укажите chat_id и название тега!")
+        await message.answer("⚠️ Укажите chat_id и тег!")
         return
 
     try:
@@ -178,19 +182,19 @@ async def cmd_add_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    user_id = message.from_user.id
     if add_tag_to_target_channel(chat_id, user_id, tag_name):
         await message.answer(f"✅ Тег '{tag_name}' добавлен к каналу {chat_id}.")
     else:
-        await message.answer(
-            f"⚠️ Не удалось добавить тег. Возможно он уже привязан или не существует.")
-
+        await message.answer(f"⚠️ Не удалось добавить тег.")
 
 @dp.message(Command("remove_target_tag"))
 async def cmd_remove_target_tag(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
-        await message.answer("⚠️ Укажите chat_id и название тега!")
+        await message.answer("⚠️ Укажите chat_id и тег!")
         return
 
     try:
@@ -200,7 +204,6 @@ async def cmd_remove_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    user_id = message.from_user.id
     if remove_tag_from_target_channel(chat_id, user_id, tag_name):
         await message.answer(f"🗑 Тег '{tag_name}' удалён у канала {chat_id}.")
     else:
@@ -209,6 +212,9 @@ async def cmd_remove_target_tag(message: Message):
 
 @dp.message(Command("list_target_tags"))
 async def cmd_list_target_tags(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
     args = message.text.split()
     if len(args) < 2:
         await message.answer("⚠️ Укажите chat_id канала!")
@@ -217,10 +223,9 @@ async def cmd_list_target_tags(message: Message):
     try:
         chat_id = int(args[1])
     except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
+        await message.answer("⚠️ Неверный формат!")
         return
 
-    user_id = message.from_user.id
     tags = get_tags_for_target_channel(chat_id, user_id)
     if not tags:
         await message.answer(f"❌ У канала {chat_id} нет тегов.")
@@ -237,6 +242,5 @@ async def cmd_list_tags(message: Message):
         await message.answer("❌ Нет доступных тегов.")
         return
 
-    text = "🏷 *Существующие теги:*\n" + "\n".join(
-        f"• {tag.name}" for tag in tags)
+    text = "🏷 Существующие теги:\n" + "\n".join(f"• {tag.name}" for tag in tags)
     await message.answer(text, parse_mode="Markdown")
