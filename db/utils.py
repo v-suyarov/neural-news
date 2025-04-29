@@ -54,10 +54,10 @@ def get_active_channels(user_id: int = None):
     return list(unique.values())
 
 
-
 def add_channel(chat_id, user_id, title=None):
     with Session() as session:
-        if session.query(Channel).filter_by(chat_id=chat_id, user_id=user_id).first():
+        if session.query(Channel).filter_by(chat_id=chat_id,
+                                            user_id=user_id).first():
             return False
         session.add(Channel(chat_id=chat_id, user_id=user_id, title=title))
         session.commit()
@@ -66,7 +66,8 @@ def add_channel(chat_id, user_id, title=None):
 
 def remove_channel_by_id(chat_id, user_id):
     with Session() as session:
-        channel = session.query(Channel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        channel = session.query(Channel).filter_by(chat_id=chat_id,
+                                                   user_id=user_id).first()
         if channel:
             session.delete(channel)
             session.commit()
@@ -102,15 +103,19 @@ async def fetch_channel_title(chat_id):
 
 def add_target_channel(chat_id, user_id, title=None):
     with Session() as session:
-        if session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first():
+        if session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                  user_id=user_id).first():
             return False
-        session.add(TargetChannel(chat_id=chat_id, user_id=user_id, title=title))
+        session.add(
+            TargetChannel(chat_id=chat_id, user_id=user_id, title=title))
         session.commit()
         return True
 
+
 def remove_target_channel(chat_id, user_id):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
         if target_channel:
             session.delete(target_channel)
             session.commit()
@@ -123,7 +128,8 @@ def get_target_channels(user_id):
 
 def add_tag_to_target_channel(chat_id, user_id, tag_name):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
         if not target_channel:
             return False
 
@@ -137,14 +143,16 @@ def add_tag_to_target_channel(chat_id, user_id, tag_name):
         if existing:
             return False
 
-        session.add(TargetChannelTag(target_channel_id=target_channel.id, tag_id=tag.id))
+        session.add(TargetChannelTag(target_channel_id=target_channel.id,
+                                     tag_id=tag.id))
         session.commit()
         return True
 
 
 def remove_tag_from_target_channel(chat_id, user_id, tag_name):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
         if not target_channel:
             return False
 
@@ -164,7 +172,8 @@ def remove_tag_from_target_channel(chat_id, user_id, tag_name):
 
 def get_tags_for_target_channel(chat_id, user_id):
     with Session() as session:
-        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id, user_id=user_id).first()
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
         if not target_channel:
             return []
         tags = (
@@ -176,46 +185,31 @@ def get_tags_for_target_channel(chat_id, user_id):
         return tags
 
 
-def rewrite_text(text):
-    """Замоканный рерайт текста."""
-    return f"{text}\n\n(рерайт GPT)"
-
-
 async def post_to_target_channels(bot: Bot, post_id: int, text: str):
-    """Определить куда постить новость и отправить её в таргетные каналы."""
     with Session() as session:
-        # Получаем теги поста
         post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
         if not post_tags:
             print(f"⚠️ Нет тегов у поста {post_id}")
             return
 
         post_tag_ids = {pt.tag_id for pt in post_tags}
-
-        # Получаем все таргетные каналы
         target_channels = session.query(TargetChannel).all()
         if not target_channels:
             print(f"⚠️ Нет таргетных каналов.")
             return
 
         for target_channel in target_channels:
-            # Получаем разрешённые теги для канала
             allowed_tags = session.query(TargetChannelTag).filter_by(
                 target_channel_id=target_channel.id).all()
             allowed_tag_ids = {at.tag_id for at in allowed_tags}
 
-            # Проверяем пересечение
             if post_tag_ids & allowed_tag_ids:
-                # Есть хотя бы один совпадающий тег
-                rewritten_text = rewrite_text(text)
+                rewritten_text = rewrite_text(text, target_channel.rewrite_prompt)
                 try:
-                    await bot.send_message(target_channel.chat_id,
-                                           rewritten_text)
-                    print(
-                        f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+                    await bot.send_message(target_channel.chat_id, rewritten_text)
+                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
                 except Exception as e:
                     print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
-
 
 def get_all_tags():
     with Session() as session:
@@ -230,3 +224,29 @@ def get_or_create_user(telegram_id):
             session.add(user)
             session.commit()
         return user
+
+
+def set_rewrite_prompt(chat_id, user_id, prompt):
+    with Session() as session:
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
+        if not target_channel:
+            return False
+        target_channel.rewrite_prompt = prompt
+        session.commit()
+        return True
+
+
+def get_rewrite_prompt(chat_id, user_id):
+    with Session() as session:
+        target_channel = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                                user_id=user_id).first()
+        if not target_channel:
+            return None
+        return target_channel.rewrite_prompt
+
+
+def rewrite_text(text, prompt=None):
+    if not prompt:
+        return text  # если промта нет, возвращаем оригинал
+    return f"{text}\n\n[Переписано с промтом: {prompt}]"

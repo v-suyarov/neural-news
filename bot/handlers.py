@@ -7,7 +7,7 @@ from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     fetch_channel_title, remove_tag_from_target_channel, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
     add_target_channel, get_tags_for_target_channel, get_all_tags, \
-    get_or_create_user
+    get_or_create_user, get_rewrite_prompt, set_rewrite_prompt
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -31,15 +31,12 @@ async def cmd_start(message: Message):
         "• `/remove_target_tag <chat_id> <тег>` — удалить тег из таргетного канала\n"
         "• `/list_target_tags <chat_id>` — показать теги, разрешённые для канала\n\n"
 
+        "✏️ *Настройка рерайта сообщений:*\n"
+        "• `/set_rewrite_prompt <chat_id> <промт>` — задать промт для рерайта постов канала\n"
+        "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n\n"
+
         "🏷 *Работа с тегами в базе:*\n"
         "• `/list_tags` — показать все существующие теги\n\n"
-
-        "⚙️ *Прочее:*\n"
-        "• Посты автоматически сохраняются в БД\n"
-        "• Теги постов определяются автоматически (пока рандомно)\n"
-        "• Посты публикуются в таргетные каналы после рерайта (пока мок 'рерайт GPT')\n\n"
-
-        "ℹ️ *Функционал будет расширяться!*"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -165,6 +162,7 @@ async def cmd_list_target_channels(message: Message):
     )
     await message.answer(text)
 
+
 @dp.message(Command("add_target_tag"))
 async def cmd_add_target_tag(message: Message):
     user_id = message.from_user.id
@@ -186,6 +184,7 @@ async def cmd_add_target_tag(message: Message):
         await message.answer(f"✅ Тег '{tag_name}' добавлен к каналу {chat_id}.")
     else:
         await message.answer(f"⚠️ Не удалось добавить тег.")
+
 
 @dp.message(Command("remove_target_tag"))
 async def cmd_remove_target_tag(message: Message):
@@ -244,3 +243,48 @@ async def cmd_list_tags(message: Message):
 
     text = "🏷 Существующие теги:\n" + "\n".join(f"• {tag.name}" for tag in tags)
     await message.answer(text, parse_mode="Markdown")
+
+@dp.message(Command("set_rewrite_prompt"))
+async def cmd_set_rewrite_prompt(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.answer("⚠️ Укажите chat_id и текст промта!")
+        return
+
+    try:
+        chat_id = int(args[1])
+        prompt = args[2]
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id!")
+        return
+
+    if set_rewrite_prompt(chat_id, user_id, prompt):
+        await message.answer(f"✅ Промт для канала {chat_id} установлен.")
+    else:
+        await message.answer(f"⚠️ Канал {chat_id} не найден.")
+
+
+@dp.message(Command("get_rewrite_prompt"))
+async def cmd_get_rewrite_prompt(message: Message):
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Укажите chat_id!")
+        return
+
+    try:
+        chat_id = int(args[1])
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id!")
+        return
+
+    prompt = get_rewrite_prompt(chat_id, user_id)
+    if prompt:
+        await message.answer(f"📜 Промт для канала {chat_id}:\n\n{prompt}")
+    else:
+        await message.answer(f"ℹ️ Промт для канала {chat_id} не установлен.")

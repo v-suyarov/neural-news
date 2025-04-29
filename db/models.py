@@ -42,6 +42,7 @@ class TargetChannel(Base):
     chat_id = Column(Integer, nullable=False)
     title = Column(Text, nullable=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    rewrite_prompt = Column(Text, nullable=True)
 
     tags = relationship(
         "TargetChannelTag",
