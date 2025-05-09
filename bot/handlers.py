@@ -9,7 +9,7 @@ from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
     add_target_channel, get_tags_for_target_channel, get_all_tags, \
     get_or_create_user, get_rewrite_prompt, set_rewrite_prompt, \
-    set_telegram_account, get_telegram_account
+    set_telegram_account, get_telegram_account, get_user
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -310,7 +310,8 @@ async def cmd_get_rewrite_prompt(message: Message):
 
 @dp.message(Command("code"))
 async def cmd_code(message: Message):
-    user_id = message.from_user.id
+    telegram_id = message.from_user.id
+    user = get_user(telegram_id=telegram_id)
     code = message.text.split(maxsplit=1)[1] if len(
         message.text.split()) > 1 else None
 
@@ -319,7 +320,7 @@ async def cmd_code(message: Message):
         return
 
     try:
-        result = await start_user_client(user_id, code=code)
+        result = await start_user_client(user.id, code=code)
         if result == 'ok':
             await message.answer("✅ Авторизация завершена и клиент запущен.")
         else:
@@ -335,10 +336,10 @@ async def cmd_set_listener(message: Message):
         await message.answer(
             "⚠️ Формат: /set_listener <api_id> <api_hash> <phone>")
         return
-
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
-
+    print(1)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+    print(1)
     try:
         api_id = int(args[1])
         api_hash = args[2]
@@ -346,11 +347,11 @@ async def cmd_set_listener(message: Message):
     except Exception:
         await message.answer("⚠️ Неверный формат данных.")
         return
-
-    set_telegram_account(user_id, api_id, api_hash, phone)
-
+    print(1)
+    set_telegram_account(user.id, api_id, api_hash, phone)
+    print(1)
     try:
-        result = await start_user_client(user_id)
+        result = await start_user_client(user.id)
         if result == 'awaiting_code':
             await message.answer(
                 "📩 Код отправлен. Введите его командой:\n`/code <ваш_код>`",
@@ -363,13 +364,14 @@ async def cmd_set_listener(message: Message):
 
 @dp.message(Command("get_listener"))
 async def cmd_get_listener(message: Message):
-    user_id = message.from_user.id
-    account = get_telegram_account(user_id)
+    telegram_id = message.from_user.id
+    user = get_user(telegram_id=telegram_id)
+    account = get_telegram_account(user.id)
     if not account:
         await message.answer("❌ Слушатель не настроен.")
         return
 
-    client = get_user_client(user_id)
+    client = get_user_client(user.id)
     if not client:
         await message.answer("⚠️ Слушатель неактивен. Выполните /set_listener.")
         return
@@ -389,7 +391,6 @@ async def cmd_get_listener(message: Message):
         text = (
                 f"👤 Текущий слушатель:\n"
                 f"• Телефон: {account.phone}\n"
-                f"• Session: {account.session_name}\n\n"
                 f"📡 Каналы:\n"
                 + "\n".join(
             f"• `{ch.entity.id}` — {ch.name}" for ch in channels)

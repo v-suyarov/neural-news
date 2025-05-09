@@ -46,10 +46,6 @@ async def start_user_client(user_id, code=None):
     # Успешная авторизация
     _clients[user_id] = client
 
-    channels = get_active_channels(user_id)
-    for channel in channels:
-        await add_channel_listener(channel.chat_id, client)
-
     print(f"✅ Клиент для user_id={user_id} запущен.")
     return 'ok'
 

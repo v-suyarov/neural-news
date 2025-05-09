@@ -291,7 +291,6 @@ def get_all_users_with_accounts():
         for acc in accounts:
             if acc.session_name:
                 path = get_session_file_path(acc.session_name)
-                print(path)
                 if os.path.exists(path):
                     valid_user_ids.append(acc.user_id)
                 else:
@@ -301,7 +300,7 @@ def get_all_users_with_accounts():
 
                     session.commit()
         return session.query(User).filter(
-            User.telegram_id.in_(valid_user_ids)).all()
+            User.id.in_(valid_user_ids)).all()
 
 
 def get_session_file_path(session_name):
@@ -310,3 +309,14 @@ def get_session_file_path(session_name):
     Пример: "user_123.session" → "sessions/user_123.session"
     """
     return os.path.join(SESSIONS_DIR, session_name)
+
+
+def get_user(user_id=None, telegram_id=None):
+    with Session() as session:
+        query = session.query(User)
+        if user_id is not None:
+            return query.filter_by(id=user_id).first()
+        elif telegram_id is not None:
+            return query.filter_by(telegram_id=telegram_id).first()
+        else:
+            raise ValueError("Нужно указать либо user_id, либо telegram_id")
