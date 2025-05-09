@@ -48,8 +48,8 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -62,15 +62,15 @@ async def cmd_add_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    client = get_user_client(user_id)
+    client = get_user_client(user.id)
     if not client:
         await message.answer(
-            "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+            "⚠️ Вам необходимо добавить слушателя /set_listener")
         return
 
     title = await fetch_channel_title(chat_id, client)
 
-    if add_channel(chat_id, user_id, title=title):
+    if add_channel(chat_id, user.id, title=title):
         await add_channel_listener(chat_id, client)
         await message.answer(f"✅ Канал {chat_id} добавлен.")
     else:
@@ -79,8 +79,9 @@ async def cmd_add_channel(message: Message):
 
 @dp.message(Command("remove_channel"))
 async def cmd_remove_channel(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_user(telegram_id=telegram_id)
+    get_or_create_user(user.id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -93,7 +94,7 @@ async def cmd_remove_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    remove_channel_by_id(chat_id, user_id)
+    remove_channel_by_id(chat_id, user.id)
     await remove_channel_listener(chat_id)
     await message.answer(f"🗑 Канал {chat_id} удалён.")
 
