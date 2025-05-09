@@ -1,5 +1,8 @@
+import os
+
 from aiogram import Bot
 
+from client.constants import SESSIONS_DIR
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
     TargetChannel, User, TelegramAccount
 from .session import Session
@@ -282,4 +285,28 @@ def get_telegram_account(user_id):
 
 def get_all_users_with_accounts():
     with Session() as session:
-        return session.query(User).join(TelegramAccount).all()
+        accounts = session.query(TelegramAccount).all()
+        valid_user_ids = []
+
+        for acc in accounts:
+            if acc.session_name:
+                path = get_session_file_path(acc.session_name)
+                print(path)
+                if os.path.exists(path):
+                    valid_user_ids.append(acc.user_id)
+                else:
+                    print(
+                        f"⚠️ Session file missing for user_id={acc.user_id}, clearing session_name")
+                    acc.session_name = None
+
+                    session.commit()
+        return session.query(User).filter(
+            User.telegram_id.in_(valid_user_ids)).all()
+
+
+def get_session_file_path(session_name):
+    """
+    Возвращает абсолютный путь до session-файла по его имени.
+    Пример: "user_123.session" → "sessions/user_123.session"
+    """
+    return os.path.join(SESSIONS_DIR, session_name)

@@ -75,6 +75,6 @@ class TelegramAccount(Base):
     api_id = Column(Integer, nullable=False)
     api_hash = Column(Text, nullable=False)
     phone = Column(Text, nullable=False)
-    session_name = Column(Text, nullable=False)
+    session_name = Column(Text, nullable=True)
 
     user = relationship("User", backref="telegram_account")

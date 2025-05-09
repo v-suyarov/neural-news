@@ -1,6 +1,11 @@
+import os
+
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PhoneCodeExpiredError
-from db.utils import get_telegram_account, get_active_channels
+
+from client.constants import SESSIONS_DIR
+from db.utils import get_telegram_account, get_active_channels, \
+    get_session_file_path
 from client.listeners import add_channel_listener
 
 _clients = {}  # user_id -> TelegramClient (авторизованные)
@@ -12,16 +17,14 @@ async def start_user_client(user_id, code=None):
     if not account:
         raise RuntimeError("Telegram account not found")
 
-    session_path = account.session_name
+    session_path = get_session_file_path(account.session_name)
     client = TelegramClient(
         session_path,
         account.api_id,
         account.api_hash,
         system_version="4.16.30-vxTEST"
     )
-
     await client.connect()
-
     if not await client.is_user_authorized():
         if code is None:
             await client.send_code_request(account.phone)

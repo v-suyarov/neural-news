@@ -9,7 +9,7 @@ from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
     add_target_channel, get_tags_for_target_channel, get_all_tags, \
     get_or_create_user, get_rewrite_prompt, set_rewrite_prompt, \
-    set_telegram_account
+    set_telegram_account, get_telegram_account
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -18,8 +18,9 @@ async def cmd_start(message: Message):
     text = (
         "🤖 *Бот запущен!* Вот что я умею на данный момент:\n\n"
 
-        "🔐 *Авторизация Telegram-аккаунта:*\n"
-        "• `/auth <api_id> <api_hash> <phone>` — авторизоваться с помощью вашего Telegram-аккаунта\n\n"
+        "🔐 *Настройка слушателя:*\n"
+        "• `/set_listener <api_id> <api_hash> <phone>` — авторизовать Telegram-аккаунт для прослушивания\n"
+        "• `/get_listener` — показать информацию о слушателе и список каналов\n\n"
 
         "📥 *Работа с каналами-источниками:*\n"
         "• `/add_channel <chat_id>` — добавить канал для прослушивания\n"
@@ -34,16 +35,16 @@ async def cmd_start(message: Message):
         "🏷 *Управление тегами таргетных каналов:*\n"
         "• `/add_target_tag <chat_id> <тег>` — добавить разрешённый тег для таргетного канала\n"
         "• `/remove_target_tag <chat_id> <тег>` — удалить тег из таргетного канала\n"
-        "• `/list_target_tags <chat_id>` — показать теги, разрешённые для канала\n\n"
+        "• `/list_target_tags <chat_id>` — показать теги, разрешённые для канала\n"
+        "• `/list_tags` — показать все существующие теги\n\n"
 
         "✏️ *Настройка рерайта сообщений:*\n"
         "• `/set_rewrite_prompt <chat_id> <промт>` — задать промт для рерайта постов канала\n"
-        "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n\n"
-
-        "🏷 *Работа с тегами в базе:*\n"
-        "• `/list_tags` — показать все существующие теги\n"
+        "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n"
     )
     await message.answer(text, parse_mode="Markdown")
+
+
 
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
@@ -63,7 +64,8 @@ async def cmd_add_channel(message: Message):
 
     client = get_user_client(user_id)
     if not client:
-        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        await message.answer(
+            "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
         return
 
     title = await fetch_channel_title(chat_id, client)
@@ -130,7 +132,8 @@ async def cmd_add_target_channel(message: Message):
 
     client = get_user_client(user_id)
     if not client:
-        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        await message.answer(
+            "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
         return
 
     title = await fetch_channel_title(chat_id, client)
@@ -325,11 +328,12 @@ async def cmd_code(message: Message):
         await message.answer(f"❌ Ошибка при вводе кода: {e}")
 
 
-@dp.message(Command("auth"))
-async def cmd_auth(message: Message):
+@dp.message(Command("set_listener"))
+async def cmd_set_listener(message: Message):
     args = message.text.split(maxsplit=4)
     if len(args) < 4:
-        await message.answer("⚠️ Формат: /auth <api_id> <api_hash> <phone>")
+        await message.answer(
+            "⚠️ Формат: /set_listener <api_id> <api_hash> <phone>")
         return
 
     user_id = message.from_user.id
@@ -348,8 +352,50 @@ async def cmd_auth(message: Message):
     try:
         result = await start_user_client(user_id)
         if result == 'awaiting_code':
-            await message.answer("📩 Код авторизации отправлен. Введите его командой:\n`/code <ваш_код>`", parse_mode="Markdown")
+            await message.answer(
+                "📩 Код отправлен. Введите его командой:\n`/code <ваш_код>`",
+                parse_mode="Markdown")
         else:
-            await message.answer("✅ Вы уже авторизованы и клиент запущен.")
+            await message.answer("✅ Слушатель авторизован и подключен.")
     except Exception as e:
-        await message.answer(f"❌ Ошибка при отправке кода: {e}")
+        await message.answer(f"❌ Ошибка авторизации слушателя: {e}")
+
+
+@dp.message(Command("get_listener"))
+async def cmd_get_listener(message: Message):
+    user_id = message.from_user.id
+    account = get_telegram_account(user_id)
+    if not account:
+        await message.answer("❌ Слушатель не настроен.")
+        return
+
+    client = get_user_client(user_id)
+    if not client:
+        await message.answer("⚠️ Слушатель неактивен. Выполните /set_listener.")
+        return
+
+    try:
+        dialogs = await client.get_dialogs()
+        channels = [
+            dialog for dialog in dialogs
+            if getattr(dialog.entity, "megagroup", False)
+               or getattr(dialog.entity, "broadcast", False)
+        ]
+
+        if not channels:
+            await message.answer("ℹ️ Слушатель не состоит ни в одном канале.")
+            return
+
+        text = (
+                f"👤 Текущий слушатель:\n"
+                f"• Телефон: {account.phone}\n"
+                f"• Session: {account.session_name}\n\n"
+                f"📡 Каналы:\n"
+                + "\n".join(
+            f"• `{ch.entity.id}` — {ch.name}" for ch in channels)
+        )
+
+        await message.answer(text)
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при получении каналов: {e}")

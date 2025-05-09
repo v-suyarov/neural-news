@@ -12,7 +12,7 @@ async def start_all_user_clients():
         print("🔄 Инициализация Telegram-клиентов для пользователей...")
         for user in users:
             try:
-                await start_user_client(user.id)
+                await start_user_client(user.telegram_id)
             except Exception as e:
                 print(
                     f"⚠️ Не удалось запустить клиента для user_id={user.id}: {e}")
