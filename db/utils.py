@@ -1,12 +1,9 @@
 from aiogram import Bot
-from telethon.errors import ChannelPrivateError, ChannelInvalidError, \
-    ChannelPublicGroupNaError, ChatAdminRequiredError
 
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
-    TargetChannel, User
+    TargetChannel, User, TelegramAccount
 from .session import Session
 import random
-from client.client_instance import client
 
 
 def init_db():
@@ -89,7 +86,7 @@ def save_post(message_id, chat_id, text):
         return post.id
 
 
-async def fetch_channel_title(chat_id):
+async def fetch_channel_title(chat_id, client):
     if not client.is_connected():
         await client.connect()
 
@@ -204,12 +201,16 @@ async def post_to_target_channels(bot: Bot, post_id: int, text: str):
             allowed_tag_ids = {at.tag_id for at in allowed_tags}
 
             if post_tag_ids & allowed_tag_ids:
-                rewritten_text = rewrite_text(text, target_channel.rewrite_prompt)
+                rewritten_text = rewrite_text(text,
+                                              target_channel.rewrite_prompt)
                 try:
-                    await bot.send_message(target_channel.chat_id, rewritten_text)
-                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+                    await bot.send_message(target_channel.chat_id,
+                                           rewritten_text)
+                    print(
+                        f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
                 except Exception as e:
                     print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
+
 
 def get_all_tags():
     with Session() as session:
@@ -250,3 +251,35 @@ def rewrite_text(text, prompt=None):
     if not prompt:
         return text  # если промта нет, возвращаем оригинал
     return f"{text}\n\n[Переписано с промтом: {prompt}]"
+
+
+def set_telegram_account(user_id, api_id, api_hash, phone):
+    session_name = f"user_{user_id}.session"
+    with Session() as session:
+        account = session.query(TelegramAccount).filter_by(
+            user_id=user_id).first()
+        if not account:
+            account = TelegramAccount(
+                user_id=user_id,
+                api_id=api_id,
+                api_hash=api_hash,
+                phone=phone,
+                session_name=session_name
+            )
+            session.add(account)
+        else:
+            account.api_id = api_id
+            account.api_hash = api_hash
+            account.phone = phone
+            account.session_name = session_name
+        session.commit()
+
+
+def get_telegram_account(user_id):
+    with Session() as session:
+        return session.query(TelegramAccount).filter_by(user_id=user_id).first()
+
+
+def get_all_users_with_accounts():
+    with Session() as session:
+        return session.query(User).join(TelegramAccount).all()

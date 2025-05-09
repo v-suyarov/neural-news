@@ -1,13 +1,15 @@
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from client.client_instance import client
+from client.client_manager import get_user_client
+from client.client_manager import start_user_client
 from .bot_instance import dp
 from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     fetch_channel_title, remove_tag_from_target_channel, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
     add_target_channel, get_tags_for_target_channel, get_all_tags, \
-    get_or_create_user, get_rewrite_prompt, set_rewrite_prompt
+    get_or_create_user, get_rewrite_prompt, set_rewrite_prompt, \
+    set_telegram_account
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -15,6 +17,9 @@ from client.listeners import add_channel_listener, remove_channel_listener
 async def cmd_start(message: Message):
     text = (
         "🤖 *Бот запущен!* Вот что я умею на данный момент:\n\n"
+
+        "🔐 *Авторизация Telegram-аккаунта:*\n"
+        "• `/auth <api_id> <api_hash> <phone>` — авторизоваться с помощью вашего Telegram-аккаунта\n\n"
 
         "📥 *Работа с каналами-источниками:*\n"
         "• `/add_channel <chat_id>` — добавить канал для прослушивания\n"
@@ -36,10 +41,9 @@ async def cmd_start(message: Message):
         "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n\n"
 
         "🏷 *Работа с тегами в базе:*\n"
-        "• `/list_tags` — показать все существующие теги\n\n"
+        "• `/list_tags` — показать все существующие теги\n"
     )
     await message.answer(text, parse_mode="Markdown")
-
 
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
@@ -57,10 +61,15 @@ async def cmd_add_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    title = await fetch_channel_title(chat_id)
+    client = get_user_client(user_id)
+    if not client:
+        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        return
+
+    title = await fetch_channel_title(chat_id, client)
 
     if add_channel(chat_id, user_id, title=title):
-        await add_channel_listener(chat_id)
+        await add_channel_listener(chat_id, client)
         await message.answer(f"✅ Канал {chat_id} добавлен.")
     else:
         await message.answer(f"⚠️ Канал {chat_id} уже существует.")
@@ -119,7 +128,12 @@ async def cmd_add_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    title = await fetch_channel_title(chat_id)
+    client = get_user_client(user_id)
+    if not client:
+        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        return
+
+    title = await fetch_channel_title(chat_id, client)
 
     if add_target_channel(chat_id, user_id, title=title):
         await message.answer(f"✅ Таргетный канал {chat_id} добавлен.")
@@ -244,6 +258,7 @@ async def cmd_list_tags(message: Message):
     text = "🏷 Существующие теги:\n" + "\n".join(f"• {tag.name}" for tag in tags)
     await message.answer(text, parse_mode="Markdown")
 
+
 @dp.message(Command("set_rewrite_prompt"))
 async def cmd_set_rewrite_prompt(message: Message):
     user_id = message.from_user.id
@@ -288,3 +303,53 @@ async def cmd_get_rewrite_prompt(message: Message):
         await message.answer(f"📜 Промт для канала {chat_id}:\n\n{prompt}")
     else:
         await message.answer(f"ℹ️ Промт для канала {chat_id} не установлен.")
+
+
+@dp.message(Command("code"))
+async def cmd_code(message: Message):
+    user_id = message.from_user.id
+    code = message.text.split(maxsplit=1)[1] if len(
+        message.text.split()) > 1 else None
+
+    if not code:
+        await message.answer("⚠️ Введите код, полученный в Telegram.")
+        return
+
+    try:
+        result = await start_user_client(user_id, code=code)
+        if result == 'ok':
+            await message.answer("✅ Авторизация завершена и клиент запущен.")
+        else:
+            await message.answer("⚠️ Не удалось завершить авторизацию.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при вводе кода: {e}")
+
+
+@dp.message(Command("auth"))
+async def cmd_auth(message: Message):
+    args = message.text.split(maxsplit=4)
+    if len(args) < 4:
+        await message.answer("⚠️ Формат: /auth <api_id> <api_hash> <phone>")
+        return
+
+    user_id = message.from_user.id
+    get_or_create_user(user_id)
+
+    try:
+        api_id = int(args[1])
+        api_hash = args[2]
+        phone = args[3]
+    except Exception:
+        await message.answer("⚠️ Неверный формат данных.")
+        return
+
+    set_telegram_account(user_id, api_id, api_hash, phone)
+
+    try:
+        result = await start_user_client(user_id)
+        if result == 'awaiting_code':
+            await message.answer("📩 Код авторизации отправлен. Введите его командой:\n`/code <ваш_код>`", parse_mode="Markdown")
+        else:
+            await message.answer("✅ Вы уже авторизованы и клиент запущен.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при отправке кода: {e}")

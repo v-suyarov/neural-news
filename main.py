@@ -1,33 +1,30 @@
 import asyncio
+from aiogram import Bot
 from bot.bot_instance import dp, bot
-from client.client_instance import client
-from db.utils import init_db, get_active_channels
-from client.listeners import add_channel_listener
-from bot import handlers as bot_handlers
-
-from config import phone
+from db.utils import init_db, get_all_users_with_accounts
+from client.client_manager import start_user_client
+from bot import handlers as bot_handlers  # Регистрируем хендлеры
 
 
-async def phone_main():
-    await client.start(phone=phone)
-    init_db()
-
-    channels = get_active_channels()
-    if channels:
-        print("✅ Инициализация подписок на каналы...")
-        for channel in channels:
-            await add_channel_listener(channel.chat_id)
+async def start_all_user_clients():
+    users = get_all_users_with_accounts()
+    if users:
+        print("🔄 Инициализация Telegram-клиентов для пользователей...")
+        for user in users:
+            try:
+                await start_user_client(user.id)
+            except Exception as e:
+                print(
+                    f"⚠️ Не удалось запустить клиента для user_id={user.id}: {e}")
     else:
-        print("❗️ Нет активных каналов для подписки.")
-
-    await client.run_until_disconnected()
+        print("❗️ Нет пользователей с Telegram-аккаунтами.")
 
 
 async def main():
     init_db()
     await asyncio.gather(
         dp.start_polling(bot),
-        phone_main()
+        start_all_user_clients()
     )
 
 
