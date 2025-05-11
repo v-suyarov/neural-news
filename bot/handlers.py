@@ -1,5 +1,7 @@
 from aiogram.filters import Command
 from aiogram.types import Message
+from telethon.errors import UserNotParticipantError, ChatAdminRequiredError, \
+    ChannelInvalidError
 
 from client.client_manager import get_user_client
 from client.client_manager import start_user_client
@@ -63,8 +65,16 @@ async def cmd_add_channel(message: Message):
 
     client = get_user_client(user.id)
     if not client:
+        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        return
+
+    try:
+        me = await client.get_me()
+        await client.get_permissions(chat_id, me.id)
+    except Exception as e:
         await message.answer(
-            "⚠️ Вам необходимо добавить слушателя /set_listener")
+            f"❌ Не удалось добавить канал. "
+            f"Убедитесь, что прослушиватель состоит в нем")
         return
 
     title = await fetch_channel_title(chat_id, client)

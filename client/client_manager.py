@@ -51,7 +51,6 @@ async def start_user_client(user_id, code=None):
 
 
 def get_user_client(user_id):
-    print(_clients)
     return _clients.get(user_id)
 
 

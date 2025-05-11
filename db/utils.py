@@ -97,7 +97,7 @@ async def fetch_channel_title(chat_id, client):
         entity = await client.get_entity(chat_id)
         return entity.title
     except Exception as e:
-        print(f"⚠️ Ошибка при получении канала {chat_id}: {e}")
+        print(f"⚠️ Ошибка при получении имени канала {chat_id}: {e}")
         return None
 
 
