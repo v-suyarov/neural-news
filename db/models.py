@@ -43,6 +43,8 @@ class TargetChannel(Base):
     title = Column(Text, nullable=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     rewrite_prompt = Column(Text, nullable=True)
+    include_image = Column(Integer, default=0)
+    image_prompt = Column(Text, nullable=True)
 
     tags = relationship(
         "TargetChannelTag",
@@ -67,11 +69,13 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     telegram_id = Column(Integer, unique=True, nullable=False)
 
+
 class TelegramAccount(Base):
     __tablename__ = 'telegram_accounts'
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False,
+                     unique=True)
     api_id = Column(Integer, nullable=False)
     api_hash = Column(Text, nullable=False)
     phone = Column(Text, nullable=False)

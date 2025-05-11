@@ -1,7 +1,9 @@
 import os
+import tempfile
 
 from aiogram import Bot
-
+from PIL import Image
+from aiogram.types import FSInputFile
 from client.constants import SESSIONS_DIR
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
     TargetChannel, User, TelegramAccount
@@ -185,7 +187,7 @@ def get_tags_for_target_channel(chat_id, user_id):
         return tags
 
 
-async def post_to_target_channels(bot: Bot, post_id: int, text: str):
+async def post_to_target_channels(bot, post_id: int, text: str):
     with Session() as session:
         post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
         if not post_tags:
@@ -195,22 +197,39 @@ async def post_to_target_channels(bot: Bot, post_id: int, text: str):
         post_tag_ids = {pt.tag_id for pt in post_tags}
         target_channels = session.query(TargetChannel).all()
         if not target_channels:
-            print(f"⚠️ Нет таргетных каналов.")
+            print("⚠️ Нет таргетных каналов.")
             return
 
         for target_channel in target_channels:
             allowed_tags = session.query(TargetChannelTag).filter_by(
-                target_channel_id=target_channel.id).all()
+                target_channel_id=target_channel.id
+            ).all()
             allowed_tag_ids = {at.tag_id for at in allowed_tags}
 
             if post_tag_ids & allowed_tag_ids:
-                rewritten_text = rewrite_text(text,
-                                              target_channel.rewrite_prompt)
+                rewritten_text = rewrite_text(text, target_channel.rewrite_prompt)
+
                 try:
-                    await bot.send_message(target_channel.chat_id,
-                                           rewritten_text)
-                    print(
-                        f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+                    if target_channel.include_image:
+                        image_prompt = target_channel.image_prompt or "(без промта)"
+                        print(f"🖼 Генерация изображения для {target_channel.chat_id} с промтом: {image_prompt}")
+
+                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                            img = Image.new("RGB", (512, 512), (0, 0, 0))  # заглушка
+                            img.save(tmp.name)
+                            photo = FSInputFile(tmp.name)
+
+                        await bot.send_photo(
+                            target_channel.chat_id,
+                            photo,
+                            caption=rewritten_text
+                        )
+                        os.remove(tmp.name)
+                    else:
+                        await bot.send_message(target_channel.chat_id, rewritten_text)
+
+                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+
                 except Exception as e:
                     print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
 
@@ -320,3 +339,39 @@ def get_user(user_id=None, telegram_id=None):
             return query.filter_by(telegram_id=telegram_id).first()
         else:
             raise ValueError("Нужно указать либо user_id, либо telegram_id")
+
+
+def set_image_prompt(chat_id, user_id, prompt: str):
+    with Session() as session:
+        tc = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                    user_id=user_id).first()
+        if not tc:
+            return False
+        tc.image_prompt = prompt.strip() if prompt.strip() else None
+        session.commit()
+        return True
+
+
+def get_image_prompt(chat_id, user_id):
+    with Session() as session:
+        tc = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                    user_id=user_id).first()
+        return tc.image_prompt if tc else None
+
+
+def set_include_image(chat_id, user_id, include: bool):
+    with Session() as session:
+        tc = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                    user_id=user_id).first()
+        if not tc:
+            return False
+        tc.include_image = 1 if include else 0
+        session.commit()
+        return True
+
+
+def get_include_image(chat_id, user_id):
+    with Session() as session:
+        tc = session.query(TargetChannel).filter_by(chat_id=chat_id,
+                                                    user_id=user_id).first()
+        return bool(tc.include_image) if tc else None

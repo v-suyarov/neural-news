@@ -11,7 +11,8 @@ from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
     add_tag_to_target_channel, get_target_channels, remove_target_channel, \
     add_target_channel, get_tags_for_target_channel, get_all_tags, \
     get_or_create_user, get_rewrite_prompt, set_rewrite_prompt, \
-    set_telegram_account, get_telegram_account, get_user
+    set_telegram_account, get_telegram_account, get_user, set_include_image, \
+    get_include_image, set_image_prompt, get_image_prompt
 from client.listeners import add_channel_listener, remove_channel_listener
 
 
@@ -42,7 +43,13 @@ async def cmd_start(message: Message):
 
         "✏️ *Настройка рерайта сообщений:*\n"
         "• `/set_rewrite_prompt <chat_id> <промт>` — задать промт для рерайта постов канала\n"
-        "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n"
+        "• `/get_rewrite_prompt <chat_id>` — посмотреть текущий промт канала\n\n"
+
+        "🖼 *Настройка изображений:*\n"
+        "• `/set_include_image <chat_id> <yes|no>` — включить/отключить генерацию изображения\n"
+        "• `/get_include_image <chat_id>` — посмотреть, включена ли генерация изображения\n"
+        "• `/set_image_prompt <chat_id> <промт>` — задать промт для генерации изображения\n"
+        "• `/get_image_prompt <chat_id>` — посмотреть текущий промт изображения\n"
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -65,7 +72,8 @@ async def cmd_add_channel(message: Message):
 
     client = get_user_client(user.id)
     if not client:
-        await message.answer("⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
+        await message.answer(
+            "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
         return
 
     try:
@@ -403,10 +411,108 @@ async def cmd_get_listener(message: Message):
                 f"• Телефон: {account.phone}\n"
                 f"📡 Каналы:\n"
                 + "\n".join(
-                f"• `{ch.entity.id}` — {ch.name}" for ch in channels)
+            f"• `{ch.entity.id}` — {ch.name}" for ch in channels)
         )
 
         await message.answer(text)
 
     except Exception as e:
         await message.answer(f"❌ Ошибка при получении каналов: {e}")
+
+
+@dp.message(Command("set_include_image"))
+async def cmd_set_include_image(message: Message):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer("⚠️ Укажите chat_id и 'yes' или 'no'!")
+        return
+
+    try:
+        chat_id = int(args[1])
+        include = args[2].lower() == "yes"
+    except ValueError:
+        await message.answer("⚠️ Неверный формат!")
+        return
+
+    if set_include_image(chat_id, user.id, include):
+        await message.answer(
+            f"✅ Настройка изображения для {chat_id} установлена: {'да' if include else 'нет'}.")
+    else:
+        await message.answer("⚠️ Не удалось обновить настройки.")
+
+
+@dp.message(Command("get_include_image"))
+async def cmd_get_include_image(message: Message):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Укажите chat_id!")
+        return
+
+    try:
+        chat_id = int(args[1])
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id!")
+        return
+
+    include = get_include_image(chat_id, user.id)
+    if include is None:
+        await message.answer("❌ Канал не найден или не принадлежит вам.")
+    elif include:
+        await message.answer(
+            f"🖼 Генерация изображения для канала {chat_id} включена.")
+    else:
+        await message.answer(
+            f"🚫 Генерация изображения для канала {chat_id} отключена.")
+
+
+@dp.message(Command("set_image_prompt"))
+async def cmd_set_image_prompt(message: Message):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    args = message.text.split(maxsplit=2)
+    if len(args) < 3:
+        await message.answer("⚠️ Укажите chat_id и промт!")
+        return
+
+    try:
+        chat_id = int(args[1])
+        prompt = args[2]
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id!")
+        return
+
+    if set_image_prompt(chat_id, user.id, prompt):
+        await message.answer(f"✅ Промт для генерации изображения установлен.")
+    else:
+        await message.answer("❌ Канал не найден.")
+
+
+@dp.message(Command("get_image_prompt"))
+async def cmd_get_image_prompt(message: Message):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Укажите chat_id!")
+        return
+
+    try:
+        chat_id = int(args[1])
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id!")
+        return
+
+    prompt = get_image_prompt(chat_id, user.id)
+    if prompt:
+        await message.answer(
+            f"🖼 Промт изображения для канала {chat_id}:\n\n{prompt}")
+    else:
+        await message.answer(f"ℹ️ Промт изображения не задан.")
