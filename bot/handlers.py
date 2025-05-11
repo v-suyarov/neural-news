@@ -45,7 +45,6 @@ async def cmd_start(message: Message):
     await message.answer(text, parse_mode="Markdown")
 
 
-
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
     telegram_id = message.from_user.id
@@ -80,8 +79,7 @@ async def cmd_add_channel(message: Message):
 @dp.message(Command("remove_channel"))
 async def cmd_remove_channel(message: Message):
     telegram_id = message.from_user.id
-    user = get_user(telegram_id=telegram_id)
-    get_or_create_user(user.id)
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -101,10 +99,10 @@ async def cmd_remove_channel(message: Message):
 
 @dp.message(Command("list_channels"))
 async def cmd_list_channels(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
-    channels = get_active_channels(user_id)
+    channels = get_active_channels(user.id)
     if not channels:
         await message.answer("❌ Нет активных каналов.")
         return
@@ -117,8 +115,8 @@ async def cmd_list_channels(message: Message):
 
 @dp.message(Command("add_target_channel"))
 async def cmd_add_target_channel(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -131,7 +129,7 @@ async def cmd_add_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    client = get_user_client(user_id)
+    client = get_user_client(user.id)
     if not client:
         await message.answer(
             "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
@@ -139,7 +137,7 @@ async def cmd_add_target_channel(message: Message):
 
     title = await fetch_channel_title(chat_id, client)
 
-    if add_target_channel(chat_id, user_id, title=title):
+    if add_target_channel(chat_id, user.id, title=title):
         await message.answer(f"✅ Таргетный канал {chat_id} добавлен.")
     else:
         await message.answer(f"⚠️ Таргетный канал {chat_id} уже существует.")
@@ -147,8 +145,8 @@ async def cmd_add_target_channel(message: Message):
 
 @dp.message(Command("remove_target_channel"))
 async def cmd_remove_target_channel(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -161,16 +159,16 @@ async def cmd_remove_target_channel(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    remove_target_channel(chat_id, user_id)
+    remove_target_channel(chat_id, user.id)
     await message.answer(f"🗑 Таргетный канал {chat_id} удалён.")
 
 
 @dp.message(Command("list_target_channels"))
 async def cmd_list_target_channels(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
-    channels = get_target_channels(user_id)
+    channels = get_target_channels(user.id)
     if not channels:
         await message.answer("❌ Нет таргетных каналов.")
         return
@@ -183,8 +181,8 @@ async def cmd_list_target_channels(message: Message):
 
 @dp.message(Command("add_target_tag"))
 async def cmd_add_target_tag(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
@@ -198,7 +196,7 @@ async def cmd_add_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    if add_tag_to_target_channel(chat_id, user_id, tag_name):
+    if add_tag_to_target_channel(chat_id, user.id, tag_name):
         await message.answer(f"✅ Тег '{tag_name}' добавлен к каналу {chat_id}.")
     else:
         await message.answer(f"⚠️ Не удалось добавить тег.")
@@ -206,8 +204,8 @@ async def cmd_add_target_tag(message: Message):
 
 @dp.message(Command("remove_target_tag"))
 async def cmd_remove_target_tag(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
@@ -221,7 +219,7 @@ async def cmd_remove_target_tag(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    if remove_tag_from_target_channel(chat_id, user_id, tag_name):
+    if remove_tag_from_target_channel(chat_id, user.id, tag_name):
         await message.answer(f"🗑 Тег '{tag_name}' удалён у канала {chat_id}.")
     else:
         await message.answer(f"⚠️ Не удалось удалить тег.")
@@ -229,8 +227,8 @@ async def cmd_remove_target_tag(message: Message):
 
 @dp.message(Command("list_target_tags"))
 async def cmd_list_target_tags(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -243,7 +241,7 @@ async def cmd_list_target_tags(message: Message):
         await message.answer("⚠️ Неверный формат!")
         return
 
-    tags = get_tags_for_target_channel(chat_id, user_id)
+    tags = get_tags_for_target_channel(chat_id, user.id)
     if not tags:
         await message.answer(f"❌ У канала {chat_id} нет тегов.")
         return
@@ -265,8 +263,8 @@ async def cmd_list_tags(message: Message):
 
 @dp.message(Command("set_rewrite_prompt"))
 async def cmd_set_rewrite_prompt(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split(maxsplit=2)
     if len(args) < 3:
@@ -280,7 +278,7 @@ async def cmd_set_rewrite_prompt(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    if set_rewrite_prompt(chat_id, user_id, prompt):
+    if set_rewrite_prompt(chat_id, user.id, prompt):
         await message.answer(f"✅ Промт для канала {chat_id} установлен.")
     else:
         await message.answer(f"⚠️ Канал {chat_id} не найден.")
@@ -288,8 +286,8 @@ async def cmd_set_rewrite_prompt(message: Message):
 
 @dp.message(Command("get_rewrite_prompt"))
 async def cmd_get_rewrite_prompt(message: Message):
-    user_id = message.from_user.id
-    get_or_create_user(user_id)
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
 
     args = message.text.split()
     if len(args) < 2:
@@ -302,7 +300,7 @@ async def cmd_get_rewrite_prompt(message: Message):
         await message.answer("⚠️ Неверный формат chat_id!")
         return
 
-    prompt = get_rewrite_prompt(chat_id, user_id)
+    prompt = get_rewrite_prompt(chat_id, user.id)
     if prompt:
         await message.answer(f"📜 Промт для канала {chat_id}:\n\n{prompt}")
     else:
@@ -312,7 +310,7 @@ async def cmd_get_rewrite_prompt(message: Message):
 @dp.message(Command("code"))
 async def cmd_code(message: Message):
     telegram_id = message.from_user.id
-    user = get_user(telegram_id=telegram_id)
+    user = get_or_create_user(telegram_id)
     code = message.text.split(maxsplit=1)[1] if len(
         message.text.split()) > 1 else None
 
@@ -366,7 +364,7 @@ async def cmd_set_listener(message: Message):
 @dp.message(Command("get_listener"))
 async def cmd_get_listener(message: Message):
     telegram_id = message.from_user.id
-    user = get_user(telegram_id=telegram_id)
+    user = get_or_create_user(telegram_id)
     account = get_telegram_account(user.id)
     if not account:
         await message.answer("❌ Слушатель не настроен.")
