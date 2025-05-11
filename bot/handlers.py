@@ -389,10 +389,11 @@ async def cmd_get_listener(message: Message):
 
         text = (
                 f"👤 Текущий слушатель:\n"
+                f"• ID: {user.telegram_id}\n"
                 f"• Телефон: {account.phone}\n"
                 f"📡 Каналы:\n"
                 + "\n".join(
-            f"• `{ch.entity.id}` — {ch.name}" for ch in channels)
+                f"• `{ch.entity.id}` — {ch.name}" for ch in channels)
         )
 
         await message.answer(text)

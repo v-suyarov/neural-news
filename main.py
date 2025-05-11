@@ -9,7 +9,6 @@ from bot import handlers as bot_handlers  # Регистрируем хендл�
 
 async def start_all_user_clients():
     users = get_all_users_with_accounts()
-    print(users)
     if users:
         print("🔄 Инициализация Telegram-клиентов для пользователей...")
         for user in users:
