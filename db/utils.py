@@ -222,12 +222,16 @@ async def post_to_target_channels(bot, post_id: int, text: str):
             image_prompt = (target_channel.image_prompt or "").strip()
             include_image = bool(target_channel.include_image)
 
-            async def send(content):
+            async def send(content: str):
                 try:
                     if include_image:
                         def generate_image():
                             pipeline_id = fusion_api.get_pipeline()
-                            uuid = fusion_api.generate(post_text=text, user_prompt=image_prompt, pipeline_id=pipeline_id)
+                            uuid = fusion_api.generate(
+                                post_text=text,
+                                user_prompt=image_prompt,
+                                pipeline_id=pipeline_id
+                            )
                             return fusion_api.check_generation(uuid)
 
                         print(f"🧠 Генерация изображения для {target_channel.chat_id}")
@@ -245,30 +249,17 @@ async def post_to_target_channels(bot, post_id: int, text: str):
                         await bot.send_message(target_channel.chat_id, content)
 
                     print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
-
                 except Exception as e:
                     print(f"❌ Ошибка отправки в {target_channel.chat_id}: {e}")
 
             if not rewrite_prompt:
                 await send(text)
             else:
-                def rewrite_in_background():
-                    result_holder = {"text": None}
-
-                    def callback(result):
-                        result_holder["text"] = result
-
-                    rewrite_client.rewrite(text=text, prompt=rewrite_prompt, callback=callback)
-
-                    # Ждём результат с таймаутом
-                    for _ in range(100):  # максимум ~10 сек
-                        if result_holder["text"] is not None:
-                            return result_holder["text"]
-                        time.sleep(0.1)
-                    raise TimeoutError("⏳ Таймаут рерайта")
+                def rewrite_blocking():
+                    return rewrite_client.rewrite(text=text, prompt=rewrite_prompt)
 
                 try:
-                    rewritten = await loop.run_in_executor(None, rewrite_in_background)
+                    rewritten = await loop.run_in_executor(None, rewrite_blocking)
                     await send(rewritten)
                 except Exception as e:
                     print(f"❌ Ошибка рерайта: {e}")
