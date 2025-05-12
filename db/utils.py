@@ -2,6 +2,7 @@ import asyncio
 import base64
 import os
 import tempfile
+import time
 
 from aiogram import Bot
 from PIL import Image
@@ -194,6 +195,8 @@ def get_tags_for_target_channel(chat_id, user_id):
 
 
 async def post_to_target_channels(bot, post_id: int, text: str):
+    loop = asyncio.get_event_loop()
+
     with Session() as session:
         post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
         if not post_tags:
@@ -212,53 +215,63 @@ async def post_to_target_channels(bot, post_id: int, text: str):
             ).all()
             allowed_tag_ids = {at.tag_id for at in allowed_tags}
 
-            if post_tag_ids & allowed_tag_ids:
-                rewrite_prompt = (target_channel.rewrite_prompt or "").strip()
-                image_prompt = (target_channel.image_prompt or "").strip()
-                include_image = bool(target_channel.include_image)
+            if not (post_tag_ids & allowed_tag_ids):
+                continue
 
-                async def send(content):
-                    try:
-                        if include_image:
-                            print(
-                                f"🧠 Генерация изображения для {target_channel.chat_id}")
+            rewrite_prompt = (target_channel.rewrite_prompt or "").strip()
+            image_prompt = (target_channel.image_prompt or "").strip()
+            include_image = bool(target_channel.include_image)
+
+            async def send(content):
+                try:
+                    if include_image:
+                        def generate_image():
                             pipeline_id = fusion_api.get_pipeline()
-                            uuid = fusion_api.generate(post_text=text,
-                                                       user_prompt=image_prompt,
-                                                       pipeline_id=pipeline_id)
-                            files = fusion_api.check_generation(uuid)
+                            uuid = fusion_api.generate(post_text=text, user_prompt=image_prompt, pipeline_id=pipeline_id)
+                            return fusion_api.check_generation(uuid)
 
-                            image_data = base64.b64decode(files[0])
-                            with tempfile.NamedTemporaryFile(suffix=".jpg",
-                                                             delete=False) as tmp:
-                                tmp.write(image_data)
-                                tmp_path = tmp.name
+                        print(f"🧠 Генерация изображения для {target_channel.chat_id}")
+                        files = await loop.run_in_executor(None, generate_image)
 
-                            photo = FSInputFile(tmp_path)
-                            await bot.send_photo(target_channel.chat_id, photo,
-                                                 caption=content)
-                            os.remove(tmp_path)
-                        else:
-                            await bot.send_message(target_channel.chat_id,
-                                                   content)
+                        image_data = base64.b64decode(files[0])
+                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                            tmp.write(image_data)
+                            tmp_path = tmp.name
 
-                        print(
-                            f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
-                    except Exception as e:
-                        print(
-                            f"❌ Ошибка отправки в {target_channel.chat_id}: {e}")
+                        photo = FSInputFile(tmp_path)
+                        await bot.send_photo(target_channel.chat_id, photo, caption=content)
+                        os.remove(tmp_path)
+                    else:
+                        await bot.send_message(target_channel.chat_id, content)
 
-                if not rewrite_prompt:
-                    await send(text)
-                else:
-                    loop = asyncio.get_event_loop()
-                    rewrite_client.rewrite(
-                        text=text,
-                        prompt=rewrite_prompt,
-                        callback=lambda rewritten: loop.call_soon_threadsafe(
-                            asyncio.create_task, send(rewritten)
-                        )
-                    )
+                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+
+                except Exception as e:
+                    print(f"❌ Ошибка отправки в {target_channel.chat_id}: {e}")
+
+            if not rewrite_prompt:
+                await send(text)
+            else:
+                def rewrite_in_background():
+                    result_holder = {"text": None}
+
+                    def callback(result):
+                        result_holder["text"] = result
+
+                    rewrite_client.rewrite(text=text, prompt=rewrite_prompt, callback=callback)
+
+                    # Ждём результат с таймаутом
+                    for _ in range(100):  # максимум ~10 сек
+                        if result_holder["text"] is not None:
+                            return result_holder["text"]
+                        time.sleep(0.1)
+                    raise TimeoutError("⏳ Таймаут рерайта")
+
+                try:
+                    rewritten = await loop.run_in_executor(None, rewrite_in_background)
+                    await send(rewritten)
+                except Exception as e:
+                    print(f"❌ Ошибка рерайта: {e}")
 
 
 def get_all_tags():
