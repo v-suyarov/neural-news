@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 
@@ -5,6 +6,7 @@ from aiogram import Bot
 from PIL import Image
 from aiogram.types import FSInputFile
 from client.constants import SESSIONS_DIR
+from rewriter.text_rewriter import rewrite_client
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
     TargetChannel, User, TelegramAccount
 from .session import Session
@@ -207,31 +209,49 @@ async def post_to_target_channels(bot, post_id: int, text: str):
             allowed_tag_ids = {at.tag_id for at in allowed_tags}
 
             if post_tag_ids & allowed_tag_ids:
-                rewritten_text = rewrite_text(text, target_channel.rewrite_prompt)
+                prompt = target_channel.rewrite_prompt or ""
 
-                try:
-                    if target_channel.include_image:
-                        image_prompt = target_channel.image_prompt or "(без промта)"
-                        print(f"🖼 Генерация изображения для {target_channel.chat_id} с промтом: {image_prompt}")
+                async def callback_wrapper(rewritten_text,
+                                           chat_id=target_channel.chat_id,
+                                           title=target_channel.title,
+                                           include_image=bool(
+                                               target_channel.include_image),
+                                           image_prompt=target_channel.image_prompt):
+                    try:
+                        if include_image:
+                            from PIL import Image
+                            import tempfile, os
+                            from aiogram.types import FSInputFile
 
-                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                            img = Image.new("RGB", (512, 512), (0, 0, 0))  # заглушка
-                            img.save(tmp.name)
-                            photo = FSInputFile(tmp.name)
+                            print(
+                                f"🖼 Генерация изображения для {chat_id} с промтом: {image_prompt or '(нет)'}")
 
-                        await bot.send_photo(
-                            target_channel.chat_id,
-                            photo,
-                            caption=rewritten_text
-                        )
-                        os.remove(tmp.name)
-                    else:
-                        await bot.send_message(target_channel.chat_id, rewritten_text)
+                            with tempfile.NamedTemporaryFile(suffix=".jpg",
+                                                             delete=False) as tmp:
+                                img = Image.new("RGB", (512, 512),
+                                                (0, 0, 0))  # Заглушка
+                                img.save(tmp.name)
+                                photo = FSInputFile(tmp.name)
 
-                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
+                            await bot.send_photo(chat_id, photo,
+                                                 caption=rewritten_text)
+                            os.remove(tmp.name)
+                        else:
+                            await bot.send_message(chat_id, rewritten_text)
 
-                except Exception as e:
-                    print(f"⚠️ Ошибка отправки в {target_channel.chat_id}: {e}")
+                        print(f"📤 Отправлено в {chat_id} ({title})")
+
+                    except Exception as e:
+                        print(f"⚠️ Ошибка отправки в {chat_id}: {e}")
+
+                loop = asyncio.get_event_loop()
+                rewrite_client.rewrite(
+                    text=text,
+                    prompt=prompt,
+                    callback=lambda rewritten: loop.call_soon_threadsafe(
+                        asyncio.create_task, callback_wrapper(rewritten)
+                    )
+                )
 
 
 def get_all_tags():
@@ -267,12 +287,6 @@ def get_rewrite_prompt(chat_id, user_id):
         if not target_channel:
             return None
         return target_channel.rewrite_prompt
-
-
-def rewrite_text(text, prompt=None):
-    if not prompt:
-        return text  # если промта нет, возвращаем оригинал
-    return f"{text}\n\n[Переписано с промтом: {prompt}]"
 
 
 def set_telegram_account(user_id, api_id, api_hash, phone):
@@ -375,3 +389,31 @@ def get_include_image(chat_id, user_id):
         tc = session.query(TargetChannel).filter_by(chat_id=chat_id,
                                                     user_id=user_id).first()
         return bool(tc.include_image) if tc else None
+
+
+def make_rewrite_callback(bot, chat_id, title, include_image, image_prompt):
+    async def callback(result):
+        try:
+            if include_image:
+                # здесь заглушка на картинку
+                from aiogram.types import FSInputFile
+                import tempfile, os
+                from PIL import Image
+
+                with tempfile.NamedTemporaryFile(suffix=".jpg",
+                                                 delete=False) as tmp:
+                    img = Image.new("RGB", (512, 512), (0, 0, 0))
+                    img.save(tmp.name)
+                    photo = FSInputFile(tmp.name)
+
+                await bot.send_photo(chat_id, photo, caption=result)
+                os.remove(tmp.name)
+            else:
+                await bot.send_message(chat_id, result)
+
+            print(f"📤 Отправлено в {chat_id} ({title})")
+
+        except Exception as e:
+            print(f"⚠️ Ошибка отправки в {chat_id}: {e}")
+
+    return callback
