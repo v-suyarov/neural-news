@@ -29,13 +29,14 @@ class FusionBrainAPI:
             images=1
     ):
         instruction = (
-            "Сгенерируй изображение для поста в телеграмм, "
-            "которое подходит по смыслу. Вот сам текст поста: "
-            f"{post_text}.\n"
-        )
+            "Сгенерируй изображение, "
+            "которое подходит по смыслу текста. "
+            f"{'Обязательно учти следующие требования: ' + user_prompt if user_prompt else str()}"
+            "\nВот сам текст поста: "
+            f"{post_text.strip()}.\n"
+        ).title()
         if user_prompt:
             instruction += f"Обязательно учти следующие требования: {user_prompt}"
-        print(f"Пртом для изображения {instruction}")
         full_prompt = instruction
 
         params = {
