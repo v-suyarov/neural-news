@@ -194,75 +194,85 @@ def get_tags_for_target_channel(chat_id, user_id):
         return tags
 
 
-async def post_to_target_channels(bot, post_id: int, text: str):
-    loop = asyncio.get_event_loop()
-
+def get_allowed_target_channels(post_id: int):
     with Session() as session:
         post_tags = session.query(PostTag).filter_by(post_id=post_id).all()
         if not post_tags:
-            print(f"⚠️ Нет тегов у поста {post_id}")
-            return
+            return []
 
         post_tag_ids = {pt.tag_id for pt in post_tags}
         target_channels = session.query(TargetChannel).all()
-        if not target_channels:
-            print("⚠️ Нет таргетных каналов.")
-            return
 
-        for target_channel in target_channels:
-            allowed_tags = session.query(TargetChannelTag).filter_by(
-                target_channel_id=target_channel.id
+        result = []
+        for tc in target_channels:
+            allowed = session.query(TargetChannelTag).filter_by(
+                target_channel_id=tc.id
             ).all()
-            allowed_tag_ids = {at.tag_id for at in allowed_tags}
+            allowed_tag_ids = {at.tag_id for at in allowed}
+            if post_tag_ids & allowed_tag_ids:
+                result.append(tc)
+        return result
 
-            if not (post_tag_ids & allowed_tag_ids):
-                continue
 
-            rewrite_prompt = (target_channel.rewrite_prompt or "").strip()
-            image_prompt = (target_channel.image_prompt or "").strip()
-            include_image = bool(target_channel.include_image)
+async def rewrite_text_if_needed(text: str, prompt: str) -> str:
+    if not prompt:
+        return text
 
-            async def send(content: str):
-                try:
-                    if include_image:
-                        def generate_image():
-                            pipeline_id = fusion_api.get_pipeline()
-                            uuid = fusion_api.generate(
-                                post_text=text,
-                                user_prompt=image_prompt,
-                                pipeline_id=pipeline_id
-                            )
-                            return fusion_api.check_generation(uuid)
+    loop = asyncio.get_event_loop()
 
-                        print(f"🧠 Генерация изображения для {target_channel.chat_id}")
-                        files = await loop.run_in_executor(None, generate_image)
+    def rewrite_blocking():
+        return rewrite_client.rewrite(text=text, prompt=prompt)
 
-                        image_data = base64.b64decode(files[0])
-                        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                            tmp.write(image_data)
-                            tmp_path = tmp.name
+    return await loop.run_in_executor(None, rewrite_blocking)
 
-                        photo = FSInputFile(tmp_path)
-                        await bot.send_photo(target_channel.chat_id, photo, caption=content)
-                        os.remove(tmp_path)
-                    else:
-                        await bot.send_message(target_channel.chat_id, content)
 
-                    print(f"📤 Отправлено в {target_channel.chat_id} ({target_channel.title})")
-                except Exception as e:
-                    print(f"❌ Ошибка отправки в {target_channel.chat_id}: {e}")
+async def generate_image_if_needed(post_text: str, user_prompt: str) -> str:
+    loop = asyncio.get_event_loop()
 
-            if not rewrite_prompt:
-                await send(text)
-            else:
-                def rewrite_blocking():
-                    return rewrite_client.rewrite(text=text, prompt=rewrite_prompt)
+    def generate():
+        pipeline_id = fusion_api.get_pipeline()
+        uuid = fusion_api.generate(post_text=post_text, user_prompt=user_prompt, pipeline_id=pipeline_id)
+        return fusion_api.check_generation(uuid)[0]
 
-                try:
-                    rewritten = await loop.run_in_executor(None, rewrite_blocking)
-                    await send(rewritten)
-                except Exception as e:
-                    print(f"❌ Ошибка рерайта: {e}")
+    base64_image = await loop.run_in_executor(None, generate)
+    return base64.b64decode(base64_image)
+
+
+async def send_to_channel(bot, chat_id: int, title: str, text: str, image_data: bytes = None):
+    try:
+        if image_data:
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp.write(image_data)
+                tmp_path = tmp.name
+            photo = FSInputFile(tmp_path)
+            await bot.send_photo(chat_id, photo, caption=text)
+            os.remove(tmp_path)
+        else:
+            await bot.send_message(chat_id, text)
+
+        print(f"📤 Отправлено в {chat_id} ({title})")
+
+    except Exception as e:
+        print(f"❌ Ошибка отправки в {chat_id}: {e}")
+
+
+async def post_to_target_channels(bot, post_id: int, text: str):
+    target_channels = get_allowed_target_channels(post_id)
+    if not target_channels:
+        print("⚠️ Нет подходящих таргетных каналов.")
+        return
+
+    for channel in target_channels:
+        rewrite_prompt = (channel.rewrite_prompt or "").strip()
+        image_prompt = (channel.image_prompt or "").strip()
+        include_image = bool(channel.include_image)
+
+        try:
+            rewritten_text = await rewrite_text_if_needed(text, rewrite_prompt)
+            image_data = await generate_image_if_needed(text, image_prompt) if include_image else None
+            await send_to_channel(bot, channel.chat_id, channel.title, rewritten_text, image_data)
+        except Exception as e:
+            print(f"❌ Ошибка при обработке канала {channel.chat_id}: {e}")
 
 
 def get_all_tags():
