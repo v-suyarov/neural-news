@@ -1,10 +1,14 @@
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, \
-    InlineKeyboardButton
+    InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
-from db.utils import get_active_channels
-from client.listeners import remove_channel_listener
+
+from client.client_manager import get_user_client
+from db.utils import get_active_channels, add_channel, fetch_channel_title, \
+    get_or_create_user
+from client.listeners import remove_channel_listener, add_channel_listener
 from db.utils import remove_channel_by_id
 from aiogram.fsm.state import State, StatesGroup
+from bot.bot_instance import dp
 
 
 class SourceAddState(StatesGroup):
@@ -111,3 +115,47 @@ async def handle_source_delete_by_id(query: CallbackQuery, user, data: str):
         await query.message.edit_text("✅ Канал удалён.", reply_markup=markup)
 
     await query.answer()
+
+
+@dp.message(SourceAddState.waiting_for_chat_id)
+async def process_chat_id_input(message: Message, state: FSMContext):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+    try:
+        chat_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ Неверный формат. Введите числовой ID канала.")
+        return
+
+    client = get_user_client(user.id)
+    if not client:
+        await message.answer(
+            "⚠️ Слушатель не активен. Сначала установите слушателя")
+        await state.clear()
+        return
+
+    try:
+        me = await client.get_me()
+        await client.get_permissions(chat_id, me.id)
+    except Exception:
+        await message.answer(
+            "❌ Не удалось проверить права. Убедитесь, что слушатель в этом канале.")
+        await state.clear()
+        return
+
+    title = await fetch_channel_title(chat_id, client)
+    if add_channel(chat_id, user.id, title):
+        await add_channel_listener(chat_id, client)
+        await message.answer(
+            f"✅ Канал `{chat_id}` ({title}) добавлен!",
+            reply_markup=get_sources_menu(),
+            parse_mode="Markdown"
+        )
+    else:
+        await message.answer(
+            f"⚠️ Канал `{chat_id}` уже существует.",
+            reply_markup=get_sources_menu(),
+            parse_mode="Markdown"
+        )
+
+    await state.clear()

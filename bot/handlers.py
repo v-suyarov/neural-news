@@ -85,7 +85,6 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
     if data == "menu_main":
         await show_main_menu(query)
 
-
     elif data == "menu_sources":
         await handle_menu_sources(query)
     elif data == "source_list":
@@ -368,68 +367,6 @@ async def add_target_channel_fsm(message: Message, state: FSMContext):
         await message.answer(f"⚠️ Такой канал уже есть.",
                              reply_markup=get_target_channels_menu(),
                              parse_mode="Markdown")
-
-    await state.clear()
-
-
-async def show_source_add_instruction(query: CallbackQuery, state: FSMContext):
-    await query.message.edit_text(
-        "Введите ID канала для добавления 📥\n\n"
-        "Убедитесь, что вы уже добавили туда слушателя и он может читать сообщения.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="⬅️ Назад",
-                                     callback_data="menu_sources"),
-                InlineKeyboardButton(text="🏠 Главное меню",
-                                     callback_data="menu_main")
-            ]
-        ])
-    )
-    await state.set_state(SourceAddState.waiting_for_chat_id)
-    await query.answer()
-
-
-@dp.message(SourceAddState.waiting_for_chat_id)
-async def process_chat_id_input(message: Message, state: FSMContext):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    try:
-        chat_id = int(message.text.strip())
-    except ValueError:
-        await message.answer("⚠️ Неверный формат. Введите числовой ID канала.")
-        return
-
-    client = get_user_client(user.id)
-    if not client:
-        await message.answer(
-            "⚠️ Слушатель не активен. Сначала установите слушателя")
-        await state.clear()
-        return
-
-    try:
-        me = await client.get_me()
-        await client.get_permissions(chat_id, me.id)
-    except Exception:
-        await message.answer(
-            "❌ Не удалось проверить права. Убедитесь, что слушатель в этом канале.")
-        await state.clear()
-        return
-
-    title = await fetch_channel_title(chat_id, client)
-    if add_channel(chat_id, user.id, title):
-        await add_channel_listener(chat_id, client)
-        await message.answer(
-            f"✅ Канал `{chat_id}` ({title}) добавлен!",
-            reply_markup=get_sources_menu(),
-            parse_mode="Markdown"
-        )
-    else:
-        await message.answer(
-            f"⚠️ Канал `{chat_id}` уже существует.",
-            reply_markup=get_sources_menu(),
-            parse_mode="Markdown"
-        )
 
     await state.clear()
 
