@@ -105,11 +105,94 @@ async def handle_tag_add_start(query: CallbackQuery, state: FSMContext,
                                data: str):
     chat_id = int(data.replace("tag_add_", ""))
     await state.update_data(tag_op_chat_id=chat_id)
-    await state.set_state(TagManagement.waiting_tag_name_to_add)
+
+    telegram_id = query.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    # Получаем уже добавленные теги
+    existing_tags = get_tags_for_target_channel(chat_id, user.id)
+    existing_tag_ids = {tag.id for tag in existing_tags}
+
+    # Получаем все теги и фильтруем
+    all_tags = get_all_tags()
+    available_tags = [tag for tag in all_tags if tag.id not in existing_tag_ids]
+
+    if not available_tags:
+        await query.message.edit_text(
+            "✅ У канала уже есть все доступные теги.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Назад",
+                                      callback_data=f"show_tags_{chat_id}")]
+            ])
+        )
+        await query.answer()
+        return
+
+    keyboard = [
+        [InlineKeyboardButton(text=tag.name,
+                              callback_data=f"tag_pick_{chat_id}_{tag.id}")]
+        for tag in available_tags
+    ]
+    keyboard.append([InlineKeyboardButton(text="⬅️ Назад",
+                                          callback_data=f"show_tags_{chat_id}")])
+
     await query.message.edit_text(
-        f"Введите имя тега, который хотите добавить в канал `{chat_id}`:",
-        parse_mode="Markdown")
+        f"Выберите тег для добавления в канал `{chat_id}`:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+        parse_mode="Markdown"
+    )
     await query.answer()
+
+
+async def handle_tag_pick(query: CallbackQuery, user, data: str):
+    try:
+        chat_id_str, tag_id_str = data.replace("tag_pick_", "").split("_")
+        chat_id = int(chat_id_str)
+        tag_id = int(tag_id_str)
+    except Exception:
+        await query.message.answer("⚠️ Неверный формат данных.")
+        await query.answer()
+        return
+
+    from db.session import Session
+    from db.models import TargetChannel, TargetChannelTag, Tag
+
+    with Session() as session:
+        target = session.query(TargetChannel).filter_by(
+            chat_id=chat_id, user_id=user.id
+        ).first()
+        tag = session.query(Tag).filter_by(id=tag_id).first()
+
+        if not target or not tag:
+            await query.message.answer("❌ Канал или тег не найден.")
+            return
+
+        exists = session.query(TargetChannelTag).filter_by(
+            target_channel_id=target.id, tag_id=tag.id
+        ).first()
+        if exists:
+            await query.message.answer("⚠️ Тег уже добавлен.")
+            await show_channel_tags(chat_id, user, query.message)
+            return
+
+        # Сохраняем имя до выхода из сессии
+        tag_name = tag.name
+
+        session.add(TargetChannelTag(target_channel_id=target.id, tag_id=tag.id))
+        session.commit()
+
+    # 1. Сообщение об успешном добавлении
+    await query.message.answer(
+        f"✅ Тег `{tag_name}` добавлен к каналу `{chat_id}`.",
+        parse_mode="Markdown"
+    )
+
+    # 2. Новый блок управления тегами
+    await show_channel_tags(chat_id, user, query.message)
+
+    await query.answer()
+
+
 
 
 async def handle_tag_remove_start(query: CallbackQuery, user, data: str):
@@ -149,14 +232,18 @@ async def handle_tag_delete(query: CallbackQuery, user, data: str):
         return
 
     if remove_tag_from_target_channel(chat_id, user.id, tag_name):
-        await query.message.delete()
+        # 1. Отправляем сообщение об удалении
         await query.message.answer(
             f"🗑 Тег `{tag_name}` удалён у канала `{chat_id}`.",
             parse_mode="Markdown"
         )
+
+        # 2. Генерируем блок управления тегами как новое сообщение
+        await show_channel_tags(chat_id, user, query.message)
     else:
-        await query.message.delete()
         await query.message.answer("⚠️ Не удалось удалить тег.")
+
+    await query.answer()
 
 
 async def handle_tags_add_manual(query: CallbackQuery, state: FSMContext):
@@ -230,26 +317,6 @@ async def handle_remove_tag(message: Message, state: FSMContext):
         await show_channel_tags(chat_id, user, message)
     else:
         await message.answer("⚠️ Не удалось удалить тег.")
-    await state.clear()
-
-
-@dp.message(TagManagement.waiting_tag_name_to_add)
-async def handle_add_tag(message: Message, state: FSMContext):
-    data = await state.get_data()
-    chat_id = data.get("tag_op_chat_id")
-
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    tag_name = message.text.strip()
-    if add_tag_to_target_channel(chat_id, user.id, tag_name):
-        await message.answer(
-            f"✅ Тег `{tag_name}` добавлен к каналу `{chat_id}`.",
-            parse_mode="Markdown"
-        )
-        await show_channel_tags(chat_id, user, message)
-    else:
-        await message.answer("⚠️ Не удалось добавить тег.")
     await state.clear()
 
 

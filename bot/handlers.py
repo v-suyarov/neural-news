@@ -6,7 +6,8 @@ from aiogram.fsm.context import FSMContext
 from bot.interface.tags import (
     handle_menu_tags, handle_tags_all, handle_tags_of_channel,
     handle_tags_show_channel, handle_tag_add_start, handle_tag_remove_start,
-    handle_tag_delete, handle_tags_add_manual, handle_tags_remove_manual
+    handle_tag_delete, handle_tags_add_manual, handle_tags_remove_manual,
+    handle_tag_pick
 )
 from bot.interface.listener import (
     show_listener_menu, handle_listener_set, handle_listener_show
@@ -95,7 +96,8 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
         await handle_tags_add_manual(query, state)
     elif data == "tags_remove":
         await handle_tags_remove_manual(query, state)
-
+    elif data.startswith("tag_pick_"):
+        await handle_tag_pick(query, user, data)
 
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
