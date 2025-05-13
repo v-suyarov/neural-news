@@ -3,6 +3,10 @@ from aiogram.types import Message
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
+from bot.interface.rewrite import (
+    handle_menu_rewrite, handle_rewrite_list, handle_rewrite_config,
+    handle_rewrite_set, handle_rewrite_clear
+)
 from bot.interface.tags import (
     handle_menu_tags, handle_tags_all, handle_tags_of_channel,
     handle_tags_show_channel, handle_tag_add_start, handle_tag_remove_start,
@@ -99,51 +103,16 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
     elif data.startswith("tag_pick_"):
         await handle_tag_pick(query, user, data)
 
-
-@dp.message(Command("set_rewrite_prompt"))
-async def cmd_set_rewrite_prompt(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    args = message.text.split(maxsplit=2)
-    if len(args) < 3:
-        await message.answer("⚠️ Укажите chat_id и текст промта!")
-        return
-
-    try:
-        chat_id = int(args[1])
-        prompt = args[2]
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
-        return
-
-    if set_rewrite_prompt(chat_id, user.id, prompt):
-        await message.answer(f"✅ Промт для канала {chat_id} установлен.")
-    else:
-        await message.answer(f"⚠️ Канал {chat_id} не найден.")
-
-
-@dp.message(Command("get_rewrite_prompt"))
-async def cmd_get_rewrite_prompt(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("⚠️ Укажите chat_id!")
-        return
-
-    try:
-        chat_id = int(args[1])
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
-        return
-
-    prompt = get_rewrite_prompt(chat_id, user.id)
-    if prompt:
-        await message.answer(f"📜 Промт для канала {chat_id}:\n\n{prompt}")
-    else:
-        await message.answer(f"ℹ️ Промт для канала {chat_id} не установлен.")
+    elif data == "menu_rewrite":
+        await handle_menu_rewrite(query)
+    elif data == "rewrite_list":
+        await handle_rewrite_list(query, user)
+    elif data.startswith("rewrite_config_"):
+        await handle_rewrite_config(query, user, data)
+    elif data.startswith("rewrite_set_"):
+        await handle_rewrite_set(query, state, data)
+    elif data.startswith("rewrite_clear_"):
+        await handle_rewrite_clear(query, user, data)
 
 
 @dp.message(Command("set_include_image"))
