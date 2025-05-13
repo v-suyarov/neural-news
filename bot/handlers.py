@@ -21,7 +21,7 @@ from bot.interface.listener import (
     show_listener_menu, handle_listener_set, handle_listener_show
 )
 from bot.interface.base import (
-    show_main_menu, get_main_menu
+    show_main_menu
 )
 from bot.interface.sources import (
     handle_menu_sources, handle_source_list,
@@ -50,17 +50,6 @@ def get_tags_menu():
                               callback_data="tags_of_channel")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_main")]
     ])
-
-
-# Главное меню
-
-
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer(
-        "🤖 Выберите действие:",
-        reply_markup=get_main_menu()
-    )
 
 
 @dp.callback_query()

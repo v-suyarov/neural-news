@@ -1,5 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, \
-    CallbackQuery
+    CallbackQuery, Message
+from bot.bot_instance import dp
+from aiogram.filters import Command
 
 
 async def show_main_menu(query: CallbackQuery):
@@ -21,3 +23,11 @@ def get_main_menu():
         [InlineKeyboardButton(text="🖼 Изображения",
                               callback_data="menu_images")],
     ])
+
+
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    await message.answer(
+        "🤖 Выберите действие:",
+        reply_markup=get_main_menu()
+    )
