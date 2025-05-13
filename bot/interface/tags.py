@@ -50,9 +50,14 @@ async def handle_tags_all(query: CallbackQuery):
 async def handle_tags_of_channel(query: CallbackQuery, user):
     channels = get_target_channels(user.id)
     if not channels:
-        await query.message.edit_text("❌ Нет доступных каналов.",
-                                      reply_markup=get_tags_menu())
-        await query.answer()
+        current_text = query.message.text or ""
+        new_text = "❌ Нет доступных каналов."
+        if current_text.strip() != new_text.strip():
+            await query.message.edit_text(new_text,
+                                          reply_markup=get_tags_menu())
+        else:
+            # Если текст тот же — просто обновим reply_markup (или проигнорируем)
+            await query.answer("❌ Нет доступных каналов.")
         return
 
     keyboard = [
