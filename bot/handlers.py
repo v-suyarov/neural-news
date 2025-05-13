@@ -3,6 +3,10 @@ from aiogram.types import Message
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
+from bot.interface.image_settings import (
+    handle_menu_images, handle_image_list, handle_image_config,
+    handle_image_prompt_set, handle_image_toggle
+)
 from bot.interface.rewrite import (
     handle_menu_rewrite, handle_rewrite_list, handle_rewrite_config,
     handle_rewrite_set, handle_rewrite_clear
@@ -113,6 +117,17 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
         await handle_rewrite_set(query, state, data)
     elif data.startswith("rewrite_clear_"):
         await handle_rewrite_clear(query, user, data)
+
+    elif data == "menu_images":
+        await handle_menu_images(query)
+    elif data == "image_list":
+        await handle_image_list(query, user)
+    elif data.startswith("image_config_"):
+        await handle_image_config(query, user, data)
+    elif data.startswith("image_set_prompt_"):
+        await handle_image_prompt_set(query, state, data)
+    elif data.startswith("image_toggle_"):
+        await handle_image_toggle(query, user, data)
 
 
 @dp.message(Command("set_include_image"))
