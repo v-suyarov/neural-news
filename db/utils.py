@@ -9,7 +9,8 @@ from PIL import Image
 from aiogram.types import FSInputFile
 from client.constants import SESSIONS_DIR
 from img_generate.img_generator import FusionBrainAPI
-from rewriter.text_rewriter import rewrite_client
+from text_generate.tag_predictor import tag_predict_client
+from text_generate.text_rewriter import rewrite_client
 from .models import Channel, ParsedPost, Tag, PostTag, Base, TargetChannelTag, \
     TargetChannel, User, TelegramAccount
 from .session import Session
@@ -37,15 +38,22 @@ def preload_tags():
             session.commit()
 
 
-def predict_tags(text):
-    """Замоканный метод предсказания тегов на основе текста."""
+async def predict_tags_async(text: str) -> list:
+    from .models import Tag
+    from .session import Session
+    import asyncio
+
     with Session() as session:
         all_tags = session.query(Tag).all()
-        if not all_tags:
-            return []
+        tag_names = [t.name for t in all_tags]
 
-        num_tags = random.randint(1, min(3, len(all_tags)))
-        return random.sample(all_tags, num_tags)
+    def task():
+        return tag_predict_client.predict_tags(text, tag_names)
+
+    predicted_tag_names = await asyncio.to_thread(task)
+
+    with Session() as session:
+        return session.query(Tag).filter(Tag.name.in_(predicted_tag_names)).all()
 
 
 def get_active_channels(user_id: int = None):
@@ -82,20 +90,29 @@ def remove_channel_by_id(chat_id, user_id):
             session.commit()
 
 
-def save_post(message_id, chat_id, text):
+async def save_post(message_id, chat_id, text):
     with Session() as session:
         post = ParsedPost(message_id=message_id, chat_id=chat_id, text=text)
         session.add(post)
         session.commit()
-
-        predicted_tags = predict_tags(text)
-
-        for tag in predicted_tags:
-            session.add(PostTag(post_id=post.id, tag_id=tag.id))
-
-        session.commit()
-
         return post.id
+
+
+async def assign_tags_to_post(post_id: int, text: str):
+    with Session() as session:
+        all_tags = session.query(Tag).all()
+        available = [t.name for t in all_tags]
+
+    def task():
+        return tag_predict_client.predict_tags(text, available)
+
+    predicted_names = await asyncio.to_thread(task)
+
+    with Session() as session:
+        tag_objs = session.query(Tag).filter(Tag.name.in_(predicted_names)).all()
+        for tag in tag_objs:
+            session.add(PostTag(post_id=post_id, tag_id=tag.id))
+        session.commit()
 
 
 async def fetch_channel_title(chat_id, client):
@@ -231,17 +248,20 @@ async def generate_image_if_needed(post_text: str, user_prompt: str) -> str:
 
     def generate():
         pipeline_id = fusion_api.get_pipeline()
-        uuid = fusion_api.generate(post_text=post_text, user_prompt=user_prompt, pipeline_id=pipeline_id)
+        uuid = fusion_api.generate(post_text=post_text, user_prompt=user_prompt,
+                                   pipeline_id=pipeline_id)
         return fusion_api.check_generation(uuid)[0]
 
     base64_image = await loop.run_in_executor(None, generate)
     return base64.b64decode(base64_image)
 
 
-async def send_to_channel(bot, chat_id: int, title: str, text: str, image_data: bytes = None):
+async def send_to_channel(bot, chat_id: int, title: str, text: str,
+                          image_data: bytes = None):
     try:
         if image_data:
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=".jpg",
+                                             delete=False) as tmp:
                 tmp.write(image_data)
                 tmp_path = tmp.name
             photo = FSInputFile(tmp_path)
@@ -269,8 +289,10 @@ async def post_to_target_channels(bot, post_id: int, text: str):
 
         try:
             rewritten_text = await rewrite_text_if_needed(text, rewrite_prompt)
-            image_data = await generate_image_if_needed(text, image_prompt) if include_image else None
-            await send_to_channel(bot, channel.chat_id, channel.title, rewritten_text, image_data)
+            image_data = await generate_image_if_needed(text,
+                                                        image_prompt) if include_image else None
+            await send_to_channel(bot, channel.chat_id, channel.title,
+                                  rewritten_text, image_data)
         except Exception as e:
             print(f"❌ Ошибка при обработке канала {channel.chat_id}: {e}")
 
