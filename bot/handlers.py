@@ -28,9 +28,21 @@ class ListenerSetup(StatesGroup):
     waiting_code = State()
 
 
+class TargetChannelSetup(StatesGroup):
+    waiting_chat_id = State()
+
 
 class SourceAddState(StatesGroup):
     waiting_for_chat_id = State()
+
+
+def get_target_channels_menu():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить", callback_data="target_add")],
+        [InlineKeyboardButton(text="❌ Удалить", callback_data="target_remove")],
+        [InlineKeyboardButton(text="📋 Список", callback_data="target_list")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_main")]
+    ])
 
 
 # Главное меню
@@ -161,8 +173,88 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
             await handle_source_removal(query, user, chat_id)
         except ValueError:
             await query.answer("⚠️ Неверный chat_id")
+    elif data == "menu_targets":
+        await query.message.edit_text("🎯 Работа с таргетными каналами:",
+                                      reply_markup=get_target_channels_menu())
+        await query.answer()
 
+    elif data == "target_list":
+        channels = get_target_channels(user.id)
+        if not channels:
+            text = "❌ Нет таргетных каналов."
+        else:
+            text = "🎯 Таргетные каналы:\n" + "\n".join(
+                f"• `{ch.chat_id}` — {ch.title or 'Без названия'}" for ch in
+                channels
+            )
+        await query.message.edit_text(text,
+                                      reply_markup=get_target_channels_menu(),
+                                      parse_mode="Markdown")
+        await query.answer()
 
+    elif data == "target_add":
+        await query.message.edit_text(
+            "Введите ID таргетного канала:\n(Бот должен иметь туда доступ)",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Назад",
+                                      callback_data="menu_targets")]
+            ])
+        )
+        await state.set_state(TargetChannelSetup.waiting_chat_id)
+        await query.answer()
+
+    elif data == "target_remove":
+        channels = get_target_channels(user.id)
+        if not channels:
+            await query.message.edit_text("❌ Нет каналов для удаления.",
+                                          reply_markup=get_target_channels_menu())
+            await query.answer()
+            return
+
+        keyboard = [
+            [InlineKeyboardButton(
+                text=f"{ch.title or 'Без названия'} ({ch.chat_id}) ❌",
+                callback_data=f"remove_target_{ch.chat_id}"
+            )] for ch in channels
+        ]
+        keyboard.append([InlineKeyboardButton(text="⬅️ Назад",
+                                              callback_data="menu_targets")])
+        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+        await query.message.edit_text("Выберите канал для удаления:",
+                                      reply_markup=markup)
+        await query.answer()
+
+    elif data.startswith("remove_target_"):
+        chat_id = int(data.replace("remove_target_", ""))
+        remove_target_channel(chat_id, user.id)
+        await query.message.edit_text("✅ Канал удалён.",
+                                      reply_markup=get_target_channels_menu())
+        await query.answer()
+@dp.message(TargetChannelSetup.waiting_chat_id)
+async def add_target_channel_fsm(message: Message, state: FSMContext):
+    telegram_id = message.from_user.id
+    user = get_or_create_user(telegram_id)
+
+    try:
+        chat_id = int(message.text.strip())
+    except ValueError:
+        await message.answer("⚠️ Неверный формат chat_id.")
+        return
+
+    client = get_user_client(user.id)
+    if not client:
+        await message.answer("⚠️ Слушатель не активен.")
+        await state.clear()
+        return
+
+    title = await fetch_channel_title(chat_id, client)
+
+    if add_target_channel(chat_id, user.id, title=title):
+        await message.answer(f"✅ Таргетный канал `{chat_id}` ({title}) добавлен.", reply_markup=get_target_channels_menu(), parse_mode="Markdown")
+    else:
+        await message.answer(f"⚠️ Такой канал уже есть.", reply_markup=get_target_channels_menu(), parse_mode="Markdown")
+
+    await state.clear()
 # Главное меню
 async def show_main_menu(query: CallbackQuery):
     await query.message.edit_text("🤖 Выберите действие:",
@@ -246,13 +338,16 @@ async def set_phone(message: Message, state: FSMContext):
     try:
         result = await start_user_client(user.id)
         if result == 'awaiting_code':
-            await message.answer("📩 Код отправлен в Telegram. Введите его сюда:")
+            await message.answer(
+                "📩 Код отправлен в Telegram. Введите его сюда:")
             await state.set_state(ListenerSetup.waiting_code)
         else:
-            await message.answer("✅ Слушатель авторизован и подключён.", reply_markup=get_listener_menu())
+            await message.answer("✅ Слушатель авторизован и подключён.",
+                                 reply_markup=get_listener_menu())
             await state.clear()
     except Exception as e:
-        await message.answer(f"❌ Ошибка авторизации: {e}", reply_markup=get_listener_menu())
+        await message.answer(f"❌ Ошибка авторизации: {e}",
+                             reply_markup=get_listener_menu())
         await state.clear()
 
 
@@ -265,13 +360,19 @@ async def set_auth_code(message: Message, state: FSMContext):
     try:
         result = await start_user_client(user.id, code=code)
         if result == 'ok':
-            await message.answer("✅ Авторизация завершена. Слушатель подключён.", reply_markup=get_listener_menu())
+            await message.answer(
+                "✅ Авторизация завершена. Слушатель подключён.",
+                reply_markup=get_listener_menu())
         else:
-            await message.answer("⚠️ Что-то пошло не так. Попробуйте заново.", reply_markup=get_listener_menu())
+            await message.answer("⚠️ Что-то пошло не так. Попробуйте заново.",
+                                 reply_markup=get_listener_menu())
     except Exception as e:
-        await message.answer(f"❌ Ошибка входа по коду: {e}", reply_markup=get_listener_menu())
+        await message.answer(f"❌ Ошибка входа по коду: {e}",
+                             reply_markup=get_listener_menu())
 
     await state.clear()
+
+
 @dp.message(SourceAddState.waiting_for_chat_id)
 async def process_chat_id_input(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
