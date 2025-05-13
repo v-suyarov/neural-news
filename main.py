@@ -1,5 +1,7 @@
 import asyncio
 from aiogram import Bot
+from aiogram.types import BotCommand
+
 from bot.bot_instance import dp, bot
 from client.listeners import add_channel_listener
 from db.utils import init_db, get_all_users_with_accounts, get_active_channels
@@ -21,13 +23,22 @@ async def start_all_user_clients():
                         await add_channel_listener(channel.chat_id, client)
 
             except Exception as e:
-                print(f"⚠️ Не удалось запустить клиента для user_id={user.id}: {e}")
+                print(
+                    f"⚠️ Не удалось запустить клиента для user_id={user.id}: {e}")
     else:
         print("❗️ Нет пользователей с Telegram-аккаунтами.")
 
 
+async def set_bot_commands(bot: Bot):
+    commands = [
+        BotCommand(command="start", description="Главное меню")
+    ]
+    await bot.set_my_commands(commands)
+
+
 async def main():
     init_db()
+    await set_bot_commands(bot)  # установка кнопки меню
     await asyncio.gather(
         dp.start_polling(bot),
         start_all_user_clients()
