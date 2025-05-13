@@ -1,24 +1,22 @@
 from aiogram.filters import Command
 from aiogram.types import Message
-from telethon.errors import UserNotParticipantError, ChatAdminRequiredError, \
-    ChannelInvalidError
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 from client.client_manager import get_user_client
-from client.client_manager import start_user_client
 from bot.bot_instance import dp
-from db.utils import add_channel, remove_channel_by_id, get_active_channels, \
-    fetch_channel_title, remove_tag_from_target_channel, \
-    add_tag_to_target_channel, get_target_channels, remove_target_channel, \
-    add_target_channel, get_tags_for_target_channel, get_all_tags, \
-    get_or_create_user, get_rewrite_prompt, set_rewrite_prompt, \
-    set_telegram_account, get_telegram_account, get_user, set_include_image, \
+from db.utils import (
+    add_channel, fetch_channel_title, remove_tag_from_target_channel,
+    add_tag_to_target_channel, get_target_channels,
+    get_tags_for_target_channel, get_all_tags, get_or_create_user,
+    get_rewrite_prompt, set_rewrite_prompt, set_include_image,
     get_include_image, set_image_prompt, get_image_prompt
-from client.listeners import add_channel_listener, remove_channel_listener
+)
+from client.listeners import add_channel_listener
 
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, \
-    CallbackQuery
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+)
 from bot.interface.listener import (
     show_listener_menu, handle_listener_set, handle_listener_show
 )
@@ -26,14 +24,13 @@ from bot.interface.base import (
     show_main_menu, get_main_menu
 )
 from bot.interface.sources import (
-    get_sources_menu, handle_menu_sources, handle_source_list,
+    handle_menu_sources, handle_source_list,
     handle_source_add, handle_source_remove, handle_source_delete_by_id,
-    SourceAddState
 )
-
-
-class TargetChannelSetup(StatesGroup):
-    waiting_chat_id = State()
+from bot.interface.targets import (
+    handle_menu_targets, handle_target_list, handle_target_add,
+    handle_target_remove_menu, handle_target_remove_by_id
+)
 
 
 class TagManagement(StatesGroup):
@@ -51,15 +48,6 @@ def get_tags_menu():
         [InlineKeyboardButton(text="📋 Все теги", callback_data="tags_all")],
         [InlineKeyboardButton(text="📦 Теги канала",
                               callback_data="tags_of_channel")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_main")]
-    ])
-
-
-def get_target_channels_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить", callback_data="target_add")],
-        [InlineKeyboardButton(text="❌ Удалить", callback_data="target_remove")],
-        [InlineKeyboardButton(text="📋 Список", callback_data="target_list")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_main")]
     ])
 
@@ -103,66 +91,18 @@ async def handle_callback(query: CallbackQuery, state: FSMContext):
     elif data == "listener_show":
         await handle_listener_show(query, user)
 
-
-
-
     elif data == "menu_targets":
-        await query.message.edit_text("🎯 Работа с таргетными каналами:",
-                                      reply_markup=get_target_channels_menu())
-        await query.answer()
-
+        await handle_menu_targets(query)
     elif data == "target_list":
-        channels = get_target_channels(user.id)
-        if not channels:
-            text = "❌ Нет таргетных каналов."
-        else:
-            text = "🎯 Таргетные каналы:\n" + "\n".join(
-                f"• `{ch.chat_id}` — {ch.title or 'Без названия'}" for ch in
-                channels
-            )
-        await query.message.edit_text(text,
-                                      reply_markup=get_target_channels_menu(),
-                                      parse_mode="Markdown")
-        await query.answer()
-
+        await handle_target_list(query, user)
     elif data == "target_add":
-        await query.message.edit_text(
-            "Введите ID таргетного канала:\n(Бот должен иметь туда доступ)",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Назад",
-                                      callback_data="menu_targets")]
-            ])
-        )
-        await state.set_state(TargetChannelSetup.waiting_chat_id)
-        await query.answer()
-
+        await handle_target_add(query, state)
     elif data == "target_remove":
-        channels = get_target_channels(user.id)
-        if not channels:
-            await query.message.edit_text("❌ Нет каналов для удаления.",
-                                          reply_markup=get_target_channels_menu())
-            await query.answer()
-            return
-
-        keyboard = [
-            [InlineKeyboardButton(
-                text=f"{ch.title or 'Без названия'} ({ch.chat_id}) ❌",
-                callback_data=f"remove_target_{ch.chat_id}"
-            )] for ch in channels
-        ]
-        keyboard.append([InlineKeyboardButton(text="⬅️ Назад",
-                                              callback_data="menu_targets")])
-        markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-        await query.message.edit_text("Выберите канал для удаления:",
-                                      reply_markup=markup)
-        await query.answer()
-
+        await handle_target_remove_menu(query, user)
     elif data.startswith("remove_target_"):
-        chat_id = int(data.replace("remove_target_", ""))
-        remove_target_channel(chat_id, user.id)
-        await query.message.edit_text("✅ Канал удалён.",
-                                      reply_markup=get_target_channels_menu())
-        await query.answer()
+        await handle_target_remove_by_id(query, user, data)
+
+
 
     elif data == "menu_tags":
         await query.message.edit_text("🏷 Работа с тегами:",
@@ -340,37 +280,6 @@ async def handle_add_tag_channel_id(message: Message, state: FSMContext):
         await message.answer("⚠️ Неверный chat_id.")
 
 
-@dp.message(TargetChannelSetup.waiting_chat_id)
-async def add_target_channel_fsm(message: Message, state: FSMContext):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    try:
-        chat_id = int(message.text.strip())
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id.")
-        return
-
-    client = get_user_client(user.id)
-    if not client:
-        await message.answer("⚠️ Слушатель не активен.")
-        await state.clear()
-        return
-
-    title = await fetch_channel_title(chat_id, client)
-
-    if add_target_channel(chat_id, user.id, title=title):
-        await message.answer(
-            f"✅ Таргетный канал `{chat_id}` ({title}) добавлен.",
-            reply_markup=get_target_channels_menu(), parse_mode="Markdown")
-    else:
-        await message.answer(f"⚠️ Такой канал уже есть.",
-                             reply_markup=get_target_channels_menu(),
-                             parse_mode="Markdown")
-
-    await state.clear()
-
-
 @dp.message(Command("add_channel"))
 async def cmd_add_channel(message: Message):
     telegram_id = message.from_user.id
@@ -476,109 +385,6 @@ async def handle_add_tag(message: Message, state: FSMContext):
     else:
         await message.answer("⚠️ Не удалось добавить тег.")
     await state.clear()
-
-
-@dp.message(Command("remove_channel"))
-async def cmd_remove_channel(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("⚠️ Укажите chat_id канала!")
-        return
-
-    try:
-        chat_id = int(args[1])
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
-        return
-
-    remove_channel_by_id(chat_id, user.id)
-    await remove_channel_listener(chat_id)
-    await message.answer(f"🗑 Канал {chat_id} удалён.")
-
-
-@dp.message(Command("list_channels"))
-async def cmd_list_channels(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    channels = get_active_channels(user.id)
-    if not channels:
-        await message.answer("❌ Нет активных каналов.")
-        return
-
-    text = "📋 Активные каналы:\n" + "\n".join(
-        f"• {ch.chat_id} ({ch.title or 'Без названия'})" for ch in channels
-    )
-    await message.answer(text)
-
-
-@dp.message(Command("add_target_channel"))
-async def cmd_add_target_channel(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("⚠️ Укажите chat_id канала!")
-        return
-
-    try:
-        chat_id = int(args[1])
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
-        return
-
-    client = get_user_client(user.id)
-    if not client:
-        await message.answer(
-            "⚠️ Вы ещё не авторизованы. Сначала выполните /auth.")
-        return
-
-    title = await fetch_channel_title(chat_id, client)
-
-    if add_target_channel(chat_id, user.id, title=title):
-        await message.answer(f"✅ Таргетный канал {chat_id} добавлен.")
-    else:
-        await message.answer(f"⚠️ Таргетный канал {chat_id} уже существует.")
-
-
-@dp.message(Command("remove_target_channel"))
-async def cmd_remove_target_channel(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("⚠️ Укажите chat_id канала!")
-        return
-
-    try:
-        chat_id = int(args[1])
-    except ValueError:
-        await message.answer("⚠️ Неверный формат chat_id!")
-        return
-
-    remove_target_channel(chat_id, user.id)
-    await message.answer(f"🗑 Таргетный канал {chat_id} удалён.")
-
-
-@dp.message(Command("list_target_channels"))
-async def cmd_list_target_channels(message: Message):
-    telegram_id = message.from_user.id
-    user = get_or_create_user(telegram_id)
-
-    channels = get_target_channels(user.id)
-    if not channels:
-        await message.answer("❌ Нет таргетных каналов.")
-        return
-
-    text = "🎯 Таргетные каналы:\n" + "\n".join(
-        f"• {ch.chat_id} ({ch.title or 'Без названия'})" for ch in channels
-    )
-    await message.answer(text)
 
 
 @dp.message(Command("add_target_tag"))
