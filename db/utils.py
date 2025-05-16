@@ -384,6 +384,8 @@ def get_session_file_path(session_name):
     Возвращает абсолютный путь до session-файла по его имени.
     Пример: "user_123.session" → "sessions/user_123.session"
     """
+    if not os.path.exists(SESSIONS_DIR):
+        os.makedirs(SESSIONS_DIR)
     return os.path.join(SESSIONS_DIR, session_name)
 
 
