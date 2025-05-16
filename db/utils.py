@@ -265,10 +265,10 @@ async def send_to_channel(bot, chat_id: int, title: str, text: str,
                 tmp.write(image_data)
                 tmp_path = tmp.name
             photo = FSInputFile(tmp_path)
-            await bot.send_photo(chat_id, photo, caption=text)
+            await bot.send_photo(chat_id, photo, caption=text, parse_mode="Markdown")
             os.remove(tmp_path)
         else:
-            await bot.send_message(chat_id, text)
+            await bot.send_message(chat_id, text, parse_mode="Markdown")
 
         print(f"📤 Отправлено в {chat_id} ({title})")
 
